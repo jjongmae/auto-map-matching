@@ -1,0 +1,12 @@
+# Map Matcher UI Dependencies
+PySide6
+PyYAML
+opencv-python
+
+# VAID GIS (local package)
+# Install with: pip install -e packages/vaid_gis
+# Dependencies for vaid_gis:
+numpy
+geopandas
+shapely
+scipy
