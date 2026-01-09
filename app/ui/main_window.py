@@ -1,18 +1,14 @@
 """
-Map Matching UI - Simplified version of VAID pose_initializer
-카메라 YAML + 이미지 + 맵매칭 + 자세조정
+Main window for Map Matching application
 """
-import sys
 import os
 import yaml
 from pathlib import Path
-import random
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QPushButton,
+    QMainWindow, QWidget, QLabel, QPushButton,
     QSlider, QDoubleSpinBox, QGroupBox, QHBoxLayout, QVBoxLayout,
-    QGridLayout, QComboBox, QFileDialog, QListWidget, QCheckBox,
-    QDialog, QScrollArea
+    QGridLayout, QComboBox, QFileDialog, QListWidget, QCheckBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage
@@ -645,11 +641,15 @@ class MapMatcherWindow(QMainWindow):
         group = QGroupBox("Vision Tasks")
         layout = QHBoxLayout()
 
-        self.btn_compare_features = QPushButton("특징점 비교 (Compare)")
+        self.btn_compare_features = QPushButton("특징점 매칭(SIFT)")
         self.btn_compare_features.clicked.connect(self._on_compare_features_clicked)
-        
+
+        self.btn_compare_features_orb = QPushButton("특징점 매칭(ORB)")
+        self.btn_compare_features_orb.clicked.connect(self._on_compare_features_orb_clicked)
+
         layout.addWidget(self.btn_compare_features)
-        
+        layout.addWidget(self.btn_compare_features_orb)
+
         # Future buttons can be added here
         layout.addStretch()
 
@@ -658,8 +658,10 @@ class MapMatcherWindow(QMainWindow):
 
     def _on_compare_features_clicked(self):
         """Open file dialog to select 2 images and match them"""
+        # Import here to avoid circular dependency
+        from app.ui.matcher_dialog import MatcherDialog
+
         # Default dir
-        idx = 0
         if self.current_image_path:
             init_dir = str(Path(self.current_image_path).parent)
         else:
@@ -687,124 +689,35 @@ class MapMatcherWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
-class MatcherDialog(QDialog):
-    def __init__(self, img_path1, img_path2, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Feature Matching Result")
-        self.resize(1200, 800)
+    def _on_compare_features_orb_clicked(self):
+        """Open file dialog to select 2 images and match them using ORB"""
+        # Import here to avoid circular dependency
+        from app.ui.matcher_dialog_orb import MatcherDialogORB
 
-        self.img_path1 = img_path1
-        self.img_path2 = img_path2
+        # Default dir
+        if self.current_image_path:
+            init_dir = str(Path(self.current_image_path).parent)
+        else:
+            init_dir = os.getcwd()
 
-        # Layout
-        layout = QVBoxLayout(self)
-        
-        # Scroll Area for large images
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        self.lbl_result = QLabel("Computing matches...")
-        self.lbl_result.setAlignment(Qt.AlignCenter)
-        scroll.setWidget(self.lbl_result)
-        
-        layout.addWidget(scroll)
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "비교할 이미지 2개 선택 (ORB)",
+            init_dir,
+            "Images (*.png *.jpg *.jpeg *.bmp)"
+        )
 
-        # Close button
-        btn_close = QPushButton("Close")
-        btn_close.clicked.connect(self.accept)
-        layout.addWidget(btn_close)
-
-        # Run matching
-        self._compute_and_show()
-
-    def _compute_and_show(self):
-        img1 = cv2.imread(self.img_path1)
-        img2 = cv2.imread(self.img_path2)
-
-        if img1 is None or img2 is None:
-            self.lbl_result.setText("이미지 로드 실패")
+        if not files:
             return
 
-        # Resize for better visualization (Fit to screen)
-        target_width = 800
-        
-        def resize_img(im):
-            h, w = im.shape[:2]
-            scale = target_width / w
-            return cv2.resize(im, (target_width, int(h * scale)))
+        if len(files) != 2:
+            self.status_label.setText(f"이미지를 정확히 2개 선택해야 합니다. (선택된 개수: {len(files)})")
+            return
 
-        img1 = resize_img(img1)
-        img2 = resize_img(img2)
-
-        # SIFT Detector
-        sift = cv2.SIFT_create()
-
-        # Detect and Compute
-        kp1, des1 = sift.detectAndCompute(img1, None)
-        kp2, des2 = sift.detectAndCompute(img2, None)
-
-        if des1 is None or des2 is None:
-             self.lbl_result.setText("특징점을 찾을 수 없습니다.")
-             return
-
-        # Matcher (BFMatcher with KNN)
-        bf = cv2.BFMatcher()
-        matches = bf.knnMatch(des1, des2, k=2)
-
-        # Apply Ratio Test
-        good = []
-        for m, n in matches:
-            if m.distance < 0.75 * n.distance:
-                good.append(m)
-
-        # Result Canvas
-        h1, w1 = img1.shape[:2]
-        h2, w2 = img2.shape[:2]
-        vis = np.zeros((max(h1, h2), w1 + w2, 3), dtype=np.uint8)
-        vis[:h1, :w1] = img1
-        vis[:h2, w1:w1+w2] = img2
-
-        # Optional: RANSAC for cleaner Inliers
-        inliers = good
-        if len(good) > 4:
-            src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
-
-            # Find Homography
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-            matchesMask = mask.ravel().tolist()
-            inliers = [m for i, m in enumerate(good) if matchesMask[i]]
-
-        # Keep top 50
-        inliers = sorted(inliers, key=lambda x: x.distance)[:50]
-
-        # Draw Output: Color-coded points (No lines)
-        for m in inliers:
-            # Generate random color
-            color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-            
-            # Point in Image 1
-            pt1 = tuple(map(int, kp1[m.queryIdx].pt))
-            cv2.circle(vis, pt1, 8, color, -1)  # Circle filled
-            cv2.circle(vis, pt1, 8, (255, 255, 255), 1)  # White outline
-
-            # Point in Image 2 (shifted by w1)
-            pt2 = tuple(map(int, kp2[m.trainIdx].pt))
-            pt2_shifted = (pt2[0] + w1, pt2[1])
-            cv2.circle(vis, pt2_shifted, 8, color, -1)
-            cv2.circle(vis, pt2_shifted, 8, (255, 255, 255), 1)
-
-        # Convert to QPixmap
-        h, w, ch = vis.shape
-        bytes_per_line = ch * w
-        qt_image = QImage(vis.data, w, h, bytes_per_line, QImage.Format_BGR888)
-        pixmap = QPixmap.fromImage(qt_image)
-        
-        self.lbl_result.setPixmap(pixmap)
-        self.lbl_result.adjustSize()
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MapMatcherWindow()
-    window.show()
-    sys.exit(app.exec())
+        try:
+            dialog = MatcherDialogORB(files[0], files[1], self)
+            dialog.exec()
+        except Exception as e:
+            self.status_label.setText(f"ORB 매칭 오류: {e}")
+            import traceback
+            traceback.print_exc()
