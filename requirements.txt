@@ -10,3 +10,10 @@ numpy
 geopandas
 shapely
 scipy
+
+# Deep Learning / Segmentation
+# Use --index-url https://download.pytorch.org/whl/cu118 (or appropriate CUDA version) if needed manually
+torch
+torchvision
+transformers
+pillow

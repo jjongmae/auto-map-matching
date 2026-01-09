@@ -8,6 +8,7 @@ env/
 camera/
 image/
 shp/
+models/
 
 # Python
 __pycache__/

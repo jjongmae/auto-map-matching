@@ -641,20 +641,42 @@ class MapMatcherWindow(QMainWindow):
         group = QGroupBox("Vision Tasks")
         layout = QHBoxLayout()
 
-        self.btn_compare_features = QPushButton("특징점 매칭(SIFT)")
+        self.btn_compare_features = QPushButton("특징점 매칭\n(SIFT)")
         self.btn_compare_features.clicked.connect(self._on_compare_features_clicked)
 
-        self.btn_compare_features_orb = QPushButton("특징점 매칭(ORB)")
+        self.btn_compare_features_orb = QPushButton("특징점 매칭\n(ORB)")
         self.btn_compare_features_orb.clicked.connect(self._on_compare_features_orb_clicked)
+
+        self.btn_detect_vp = QPushButton("소실점 검출\n(LSD + RANSAC)")
+        self.btn_detect_vp.clicked.connect(self._on_detect_vanishing_point_clicked)
 
         layout.addWidget(self.btn_compare_features)
         layout.addWidget(self.btn_compare_features_orb)
+        layout.addWidget(self.btn_detect_vp)
 
         # Future buttons can be added here
         layout.addStretch()
 
         group.setLayout(layout)
         return group
+
+    def _on_detect_vanishing_point_clicked(self):
+        """Open vanishing point detection dialog"""
+        if not self.current_image_path:
+            self.status_label.setText("이미지를 먼저 선택하세요")
+            return
+
+        # Import here to avoid circular dependency
+        from app.ui.vanishing_point_dialog import VanishingPointDialog
+
+        try:
+            dialog = VanishingPointDialog(self.current_image_path, self)
+            dialog.exec()
+        except Exception as e:
+            self.status_label.setText(f"소실점 검출 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
 
     def _on_compare_features_clicked(self):
         """Open file dialog to select 2 images and match them"""
