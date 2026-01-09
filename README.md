@@ -1,13 +1,21 @@
 # Auto Map Matching
 
-카메라 이미지와 지도 데이터를 매칭하여 카메라 자세를 조정하는 도구
+카메라 이미지와 지도 데이터를 매칭하여 카메라 자세를 조정하고, 특징점 기반으로 이미지 간 상대 자세를 추정하는 도구
 
 ## 프로젝트 구조
 
 ```
 auto-map-matching/
-├── main.py                    # 메인 UI 프로그램
+├── run.py                     # 메인 실행 파일
 ├── requirements.txt           # Python 패키지 의존성
+├── app/                       # 애플리케이션 패키지
+│   ├── ui/                   # UI 관련 모듈
+│   │   ├── main_window.py   # 메인 윈도우
+│   │   ├── matcher_dialog.py     # SIFT 특징점 매칭 다이얼로그
+│   │   └── matcher_dialog_orb.py # ORB 특징점 매칭 다이얼로그
+│   └── core/                 # 핵심 로직
+│       ├── feature_matcher.py    # 특징점 매칭 및 자세 추정
+│       └── geometry.py           # 기하학 변환 유틸리티
 ├── packages/
 │   └── vaid_gis/             # VAID GIS 패키지 (로컬)
 ├── camera/                    # 카메라 설정 폴더
@@ -47,10 +55,12 @@ pip install -e packages/vaid_gis
 ### 실행
 
 ```bash
-python main.py
+python run.py
 ```
 
 ### UI 사용법
+
+#### 1. 맵 매칭 기본 기능
 
 1. **카메라 선택**: 좌측 상단에서 카메라 폴더 선택
    - `camera/` 폴더 내의 `base.yaml`을 가진 폴더가 자동으로 스캔됩니다
@@ -70,6 +80,15 @@ python main.py
 4. **저장/리셋**:
    - **Save**: 현재 이미지명으로 YAML 파일 저장 (예: `img001.yaml`)
    - **Reset**: 현재 이미지의 YAML 파일에서 값을 다시 로드 (있으면 이미지명.yaml, 없으면 base.yaml)
+
+#### 2. Feature Comparison 기능
+
+이미지 목록에서 두 개의 이미지를 선택한 후 Compare 버튼을 클릭하면:
+
+- **SIFT 특징점 매칭**: SIFT 알고리즘을 사용하여 두 이미지 간 특징점을 매칭
+- **ORB 특징점 매칭**: ORB 알고리즘을 사용한 빠른 특징점 매칭
+- **상대 자세 추정**: Essential Matrix를 통한 카메라 간 상대적 회전/이동 추정
+- **시각화**: 매칭된 특징점과 추정된 자세 파라미터를 시각적으로 표시
 
 ## 카메라 YAML 파일 형식
 
@@ -116,8 +135,17 @@ resolution_height: 1080
 
 ## 주요 기능
 
+### 맵 매칭
 - 카메라 폴더 자동 스캔 및 `base.yaml` 로드
 - 이미지별 개별 설정 지원 (이미지명.yaml)
 - 이미지 기반 맵 매칭 실시간 시각화
 - 실시간 자세 조정 및 프리뷰
 - 이미지별 조정된 파라미터 저장
+
+### Feature Comparison & Pose Estimation
+- SIFT/ORB 기반 특징점 검출 및 매칭
+- Cross-check 및 Lowe's ratio test를 통한 robust 매칭
+- Essential Matrix를 통한 상대 자세 추정
+- RANSAC 기반 outlier 제거
+- 매칭 결과 및 자세 파라미터 시각화
+- 추정된 자세를 두 번째 이미지에 자동 적용
