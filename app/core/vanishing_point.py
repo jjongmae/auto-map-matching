@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import math
 
+RANSAC_RANDOM_SEED = 42
+
 def detect_lines_lsd(image):
     """
     Detect line segments in the image using LSD (Line Segment Detector).
@@ -134,9 +136,12 @@ def ransac_vanishing_point(lines, num_iterations=1000, threshold=2.0):
     # Adaptive RANSAC variables
     # log(1-p) / log(1-w^2) where w is inlier ratio. Start with high iter
     
+    # Use a fixed seed for deterministic behavior
+    rng = np.random.default_rng(RANSAC_RANDOM_SEED)
+    
     for _ in range(num_iterations):
         # Sample 2 lines randomly
-        idx = np.random.choice(N, 2, replace=False)
+        idx = rng.choice(N, 2, replace=False)
         l1 = line_params[idx[0]]
         l2 = line_params[idx[1]]
         
