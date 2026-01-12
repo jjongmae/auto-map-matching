@@ -32,7 +32,7 @@ def create_road_surface_model(gdfs: list[gpd.GeoDataFrame], tolerance: float = 0
                     all_points.append(coords)
 
     if not all_points:
-        print("[WARNING] Surface: 도로면 모델을 생성하기 위한 3D 정점이 부족합니다.")
+        print("[경고] Surface: 도로면 모델을 생성하기 위한 3D 정점이 부족합니다.")
         return None, None, None
 
     try:
@@ -45,8 +45,8 @@ def create_road_surface_model(gdfs: list[gpd.GeoDataFrame], tolerance: float = 0
         interpolator = LinearNDInterpolator(points, values)
         triangulation = Delaunay(points)
         
-        print(f"[INFO] Surface: 도로면 모델 생성 성공 - {len(unique_vertices)}개의 고유 정점, {len(triangulation.simplices)}개의 삼각형")
+        print(f"[정보] Surface: 도로면 모델 생성 성공 - {len(unique_vertices)}개의 고유 정점, {len(triangulation.simplices)}개의 삼각형")
         return interpolator, triangulation, unique_vertices
     except Exception as e:
-        print(f"[ERROR] Surface: 도로면 모델 생성 중 오류 발생 - {e}")
+        print(f"[오류] Surface: 도로면 모델 생성 중 오류 발생 - {e}")
         return None, None, None

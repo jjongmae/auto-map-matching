@@ -7,52 +7,52 @@ from PIL import Image
 class RoadSegmentor:
     def __init__(self, model_name="nvidia/segformer-b2-finetuned-cityscapes-1024-1024"):
         """
-        Initialize SegFormer model.
-        Args:
-            model_name: HuggingFace model name. 
-                        Default is b2 trained on Cityscapes (Class 0 = Road).
+        SegFormer 모델 초기화.
+        인자:
+            model_name: HuggingFace 모델 이름. 
+                        기본값은 Cityscapes에서 훈련된 b2 (클래스 0 = 도로)입니다.
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Initializing RoadSegmentor on {self.device}...")
+        print(f"{self.device}에서 RoadSegmentor 초기화 중...")
         
-        # Local cache directory
+        # 로컬 캐시 디렉토리
         import os
         cache_dir = os.path.join(os.getcwd(), "models")
         os.makedirs(cache_dir, exist_ok=True)
-        print(f"Using model cache dir: {cache_dir}")
+        print(f"모델 캐시 디렉토리 사용: {cache_dir}")
         
         try:
             self.processor = SegformerImageProcessor.from_pretrained(model_name, cache_dir=cache_dir)
             self.model = SegformerForSemanticSegmentation.from_pretrained(model_name, cache_dir=cache_dir)
             self.model.to(self.device)
             self.model.eval()
-            print("RoadSegmentor initialized successfully.")
+            print("RoadSegmentor가 성공적으로 초기화되었습니다.")
         except Exception as e:
-            print(f"Failed to initialize RoadSegmentor: {e}")
+            print(f"RoadSegmentor 초기화 실패: {e}")
             self.model = None
 
     def segment_road(self, image_bgr):
         """
-        Segment road area from BGR image.
-        Returns:
-            mask: Binary mask (uint8), 255 for road, 0 for others.
+        BGR 이미지에서 도로 영역을 분할합니다.
+        반환:
+            mask: 이진 마스크 (uint8), 도로는 255, 그 외에는 0.
         """
         if self.model is None:
             return None
             
-        # Convert BGR to RGB
+        # BGR을 RGB로 변환
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         
-        # Prepare input
+        # 입력 준비
         inputs = self.processor(images=image_rgb, return_tensors="pt")
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
-        # Inference
+        # 추론
         with torch.no_grad():
             outputs = self.model(**inputs)
             
-        # Post-process
-        # Upsample logits to original image size
+        # 후처리
+        # 로짓을 원본 이미지 크기로 업샘플링
         logits = outputs.logits
         upsampled_logits = torch.nn.functional.interpolate(
             logits,
@@ -61,13 +61,13 @@ class RoadSegmentor:
             align_corners=False,
         )
         
-        # Get class with highest probability
+        # 가장 높은 확률을 가진 클래스 가져오기
         pred_seg = upsampled_logits.argmax(dim=1)[0]
         pred_seg = pred_seg.cpu().numpy().astype(np.uint8)
         
-        # Cityscapes classes: 0 = road, 1 = sidewalk, ...
-        # We want road (0). Maybe sidewalk (1) too? 
-        # For finding VPs, road is most important.
+        # Cityscapes 클래스: 0 = 도로, 1 = 보도, ...
+        # 우리는 도로(0)를 원합니다. 보도(1)도 포함할까요? 
+        # 소실점(VP)을 찾기 위해 도로가 가장 중요합니다.
         mask = np.zeros_like(pred_seg)
         mask[pred_seg == 0] = 255
         

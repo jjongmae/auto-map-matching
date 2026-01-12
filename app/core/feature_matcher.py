@@ -1,5 +1,5 @@
 """
-Feature matching and pose estimation utilities using SIFT and Essential Matrix
+SIFT 및 Essential Matrix를 사용한 특징 매칭 및 포즈 추정 유틸리티
 """
 import cv2
 import numpy as np
@@ -10,50 +10,50 @@ from typing import Tuple, List, Optional, Dict
 def compute_sift_matches(img1: np.ndarray, img2: np.ndarray,
                          ratio_thresh: float = 0.75) -> Tuple[List, List, List]:
     """
-    Compute SIFT feature matches between two images with cross-check.
+    교차 검사를 통해 두 이미지 간의 SIFT 특징 매칭을 계산합니다.
 
-    Args:
-        img1: First image (numpy array)
-        img2: Second image (numpy array)
-        ratio_thresh: Lowe's ratio test threshold (default 0.75)
+    인자:
+        img1: 첫 번째 이미지 (numpy 배열)
+        img2: 두 번째 이미지 (numpy 배열)
+        ratio_thresh: Lowe의 비율 테스트 임계값 (기본값 0.75)
 
-    Returns:
-        Tuple of (keypoints1, keypoints2, good_matches)
+    반환:
+        (keypoints1, keypoints2, good_matches)의 튜플
     """
-    # SIFT Detector
+    # SIFT 검출기
     sift = cv2.SIFT_create()
 
-    # Detect and Compute
+    # 검출 및 계산
     kp1, des1 = sift.detectAndCompute(img1, None)
     kp2, des2 = sift.detectAndCompute(img2, None)
 
     if des1 is None or des2 is None:
         return kp1, kp2, []
 
-    # Matcher
+    # 매처
     bf = cv2.BFMatcher()
 
-    # 1. Match A -> B
+    # 1. 매칭 A -> B
     matches_12 = bf.knnMatch(des1, des2, k=2)
     good_12 = []
     for m, n in matches_12:
         if m.distance < ratio_thresh * n.distance:
             good_12.append(m)
 
-    # 2. Match B -> A (Cross Check)
+    # 2. 매칭 B -> A (교차 검사)
     matches_21 = bf.knnMatch(des2, des1, k=2)
     good_21 = []
     for m, n in matches_21:
         if m.distance < ratio_thresh * n.distance:
             good_21.append(m)
 
-    # 3. Find intersection (Mutual Matches)
+    # 3. 교차점 찾기 (상호 매칭)
     good = []
     matches_21_map = {m.queryIdx: m.trainIdx for m in good_21}
 
     for m in good_12:
-        # m.queryIdx is A, m.trainIdx is B
-        # Check if B(m.trainIdx) maps back to A(m.queryIdx)
+        # m.queryIdx는 A, m.trainIdx는 B
+        # B(m.trainIdx)가 A(m.queryIdx)로 다시 매핑되는지 확인
         if m.trainIdx in matches_21_map:
             if matches_21_map[m.trainIdx] == m.queryIdx:
                 good.append(m)
@@ -64,30 +64,30 @@ def compute_sift_matches(img1: np.ndarray, img2: np.ndarray,
 def compute_orb_matches(img1: np.ndarray, img2: np.ndarray,
                         ratio_thresh: float = 0.75) -> Tuple[List, List, List]:
     """
-    Compute ORB feature matches between two images with cross-check.
+    교차 검사를 통해 두 이미지 간의 ORB 특징 매칭을 계산합니다.
 
-    Args:
-        img1: First image (numpy array)
-        img2: Second image (numpy array)
-        ratio_thresh: Lowe's ratio test threshold (default 0.75)
+    인자:
+        img1: 첫 번째 이미지 (numpy 배열)
+        img2: 두 번째 이미지 (numpy 배열)
+        ratio_thresh: Lowe의 비율 테스트 임계값 (기본값 0.75)
 
-    Returns:
-        Tuple of (keypoints1, keypoints2, good_matches)
+    반환:
+        (keypoints1, keypoints2, good_matches)의 튜플
     """
-    # ORB Detector
+    # ORB 검출기
     orb = cv2.ORB_create(nfeatures=2000)
 
-    # Detect and Compute
+    # 검출 및 계산
     kp1, des1 = orb.detectAndCompute(img1, None)
     kp2, des2 = orb.detectAndCompute(img2, None)
 
     if des1 is None or des2 is None:
         return kp1, kp2, []
 
-    # Matcher (use NORM_HAMMING for ORB binary descriptors)
+    # 매처 (ORB 바이너리 디스크립터에 NORM_HAMMING 사용)
     bf = cv2.BFMatcher(cv2.NORM_HAMMING)
 
-    # 1. Match A -> B
+    # 1. 매칭 A -> B
     matches_12 = bf.knnMatch(des1, des2, k=2)
     good_12 = []
     for pair in matches_12:
@@ -96,7 +96,7 @@ def compute_orb_matches(img1: np.ndarray, img2: np.ndarray,
             if m.distance < ratio_thresh * n.distance:
                 good_12.append(m)
 
-    # 2. Match B -> A (Cross Check)
+    # 2. 매칭 B -> A (교차 검사)
     matches_21 = bf.knnMatch(des2, des1, k=2)
     good_21 = []
     for pair in matches_21:
@@ -105,13 +105,13 @@ def compute_orb_matches(img1: np.ndarray, img2: np.ndarray,
             if m.distance < ratio_thresh * n.distance:
                 good_21.append(m)
 
-    # 3. Find intersection (Mutual Matches)
+    # 3. 교차점 찾기 (상호 매칭)
     good = []
     matches_21_map = {m.queryIdx: m.trainIdx for m in good_21}
 
     for m in good_12:
-        # m.queryIdx is A, m.trainIdx is B
-        # Check if B(m.trainIdx) maps back to A(m.queryIdx)
+        # m.queryIdx는 A, m.trainIdx는 B
+        # B(m.trainIdx)가 A(m.queryIdx)로 다시 매핑되는지 확인
         if m.trainIdx in matches_21_map:
             if matches_21_map[m.trainIdx] == m.queryIdx:
                 good.append(m)
@@ -125,30 +125,30 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
                                                             Optional[np.ndarray],
                                                             List]:
     """
-    Estimate relative pose (R, t) between two camera views using Essential Matrix.
+    Essential Matrix를 사용하여 두 카메라 뷰 간의 상대 포즈(R, t)를 추정합니다.
 
-    Args:
-        kp1: Keypoints from image 1
-        kp2: Keypoints from image 2
-        good_matches: List of good matches
-        camera_params: Dictionary containing camera intrinsic parameters
-        img_shape: Image shape (height, width)
-        max_matches: Maximum number of matches to use (default 50)
+    인자:
+        kp1: 이미지 1의 키포인트
+        kp2: 이미지 2의 키포인트
+        good_matches: 좋은 매칭 목록
+        camera_params: 카메라 내부 파라미터를 포함하는 딕셔너리
+        img_shape: 이미지 모양 (height, width)
+        max_matches: 사용할 최대 매칭 수 (기본값 50)
 
-    Returns:
-        Tuple of (R_relative, t_relative, inlier_matches)
+    반환:
+        (R_relative, t_relative, inlier_matches)의 튜플
     """
     if len(good_matches) < 5:
         return None, None, []
 
-    # Sort by match distance and take top N
+    # 매칭 거리로 정렬하고 상위 N개 가져오기
     good_sorted = sorted(good_matches, key=lambda x: x.distance)[:max_matches]
 
-    # Extract Points
+    # 포인트 추출
     src_pts = np.float32([kp1[m.queryIdx].pt for m in good_sorted]).reshape(-1, 1, 2)
     dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_sorted]).reshape(-1, 1, 2)
 
-    # Get Camera Matrix K & Distortion Coeffs
+    # 카메라 행렬 K 및 왜곡 계수 가져오기
     fx = camera_params.get('fx', 1000)
     fy = camera_params.get('fy', 1000)
     cx = camera_params.get('cx', img_shape[1]/2)
@@ -161,11 +161,11 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
         camera_params.get('k3', 0)
     ], dtype=np.float64)
 
-    # Undistort Points to Normalized Coordinates
+    # 정규화된 좌표로 포인트 왜곡 보정
     src_norm = cv2.undistortPoints(src_pts, K, dist_coeffs)
     dst_norm = cv2.undistortPoints(dst_pts, K, dist_coeffs)
 
-    # Find Essential Matrix (Robust RANSAC)
+    # Essential Matrix 찾기 (강건한 RANSAC)
     E, mask = cv2.findEssentialMat(
         src_norm, dst_norm,
         focal=1.0, pp=(0, 0),
@@ -175,10 +175,10 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
     if E is None:
         return None, None, []
 
-    # Recover Pose (R, t)
+    # 포즈(R, t) 복원
     _, R_rel, t_rel, mask_pose = cv2.recoverPose(E, src_norm, dst_norm)
 
-    # Filter inliers for display
+    # 표시를 위한 인라이어 필터링
     inliers = []
     if mask_pose is not None:
         matchesMask = mask_pose.ravel().tolist()
@@ -193,18 +193,18 @@ def visualize_matches(img1: np.ndarray, img2: np.ndarray,
                       kp1, kp2, matches: List,
                       target_width: int = 800) -> np.ndarray:
     """
-    Visualize feature matches between two images side by side.
+    두 이미지 간의 특징 매칭을 나란히 시각화합니다.
 
-    Args:
-        img1: First image
-        img2: Second image
-        kp1: Keypoints from image 1
-        kp2: Keypoints from image 2
-        matches: List of matches to visualize
-        target_width: Target width for each image (default 800)
+    인자:
+        img1: 첫 번째 이미지
+        img2: 두 번째 이미지
+        kp1: 이미지 1의 키포인트
+        kp2: 이미지 2의 키포인트
+        matches: 시각화할 매칭 목록
+        target_width: 각 이미지의 목표 너비 (기본값 800)
 
-    Returns:
-        Visualization image with matches drawn
+    반환:
+        매칭이 그려진 시각화 이미지
     """
     def resize_img(im):
         h, w = im.shape[:2]
@@ -214,14 +214,14 @@ def visualize_matches(img1: np.ndarray, img2: np.ndarray,
     img1_disp = resize_img(img1)
     img2_disp = resize_img(img2)
 
-    # Canvas
+    # 캔버스
     h1, w1 = img1_disp.shape[:2]
     h2, w2 = img2_disp.shape[:2]
     vis = np.zeros((max(h1, h2), w1 + w2, 3), dtype=np.uint8)
     vis[:h1, :w1] = img1_disp
     vis[:h2, w1:w1+w2] = img2_disp
 
-    # Scaling factor for points
+    # 포인트에 대한 스케일링 팩터
     s1 = target_width / img1.shape[1]
     s2 = target_width / img2.shape[1]
 

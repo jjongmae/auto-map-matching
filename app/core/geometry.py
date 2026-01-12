@@ -1,12 +1,12 @@
 """
-Geometry utilities for rotation matrix and Euler angle conversions
+회전 행렬 및 오일러 각 변환을 위한 기하학 유틸리티
 """
 import numpy as np
 import math
 
 
 def isRotationMatrix(R):
-    """Checks if a matrix is a valid rotation matrix."""
+    """행렬이 유효한 회전 행렬인지 확인합니다."""
     Rt = np.transpose(R)
     shouldBeIdentity = np.dot(Rt, R)
     I = np.identity(3, dtype=R.dtype)
@@ -16,30 +16,30 @@ def isRotationMatrix(R):
 
 def euler_to_R_cam(yaw, pitch, roll):
     """
-    Matches vaid_gis.geometry.cam_rotation:
+    vaid_gis.geometry.cam_rotation과 일치합니다:
     Roll(z) -> Pitch(x) -> Yaw(y)
-    with yaw_cv = -yaw, pitch_cv = -pitch.
+    여기서 yaw_cv = -yaw, pitch_cv = -pitch 입니다.
     """
-    # Convert to radians
+    # 라디안으로 변환
     y_cv = math.radians(-yaw)
     p_cv = math.radians(-pitch)
     r_cv = math.radians(roll)
 
-    # R_roll (Z)
+    # R_roll (Z축 회전)
     R_z = np.array([
         [math.cos(r_cv), -math.sin(r_cv), 0],
         [math.sin(r_cv),  math.cos(r_cv), 0],
         [0,              0,               1]
     ])
 
-    # R_pitch (X)
+    # R_pitch (X축 회전)
     R_x = np.array([
         [1, 0,              0],
         [0, math.cos(p_cv), -math.sin(p_cv)],
         [0, math.sin(p_cv),  math.cos(p_cv)]
     ])
 
-    # R_yaw (Y)
+    # R_yaw (Y축 회전)
     R_y = np.array([
         [ math.cos(y_cv), 0, math.sin(y_cv)],
         [ 0,              1, 0],
@@ -53,9 +53,9 @@ def euler_to_R_cam(yaw, pitch, roll):
 
 def R_cam_to_euler(R):
     """
-    Inverse of euler_to_R_cam.
-    Decomposes R = Rz(r) * Rx(p') * Ry(y')
-    Returns yaw, pitch, roll in degrees.
+    euler_to_R_cam의 역함수입니다.
+    R = Rz(r) * Rx(p') * Ry(y')로 분해합니다.
+    yaw, pitch, roll을 도(degree) 단위로 반환합니다.
     """
     # R[2, 1] = sin(p')
     # p' = asin(R[2, 1])
@@ -66,30 +66,30 @@ def R_cam_to_euler(R):
     singular = sy < 1e-6
 
     if not singular:
-        # p' = atan2(R[2,1], sy) # more robust than asin
+        # p' = atan2(R[2,1], sy) # asin보다 더 강건함
         p_cv = math.atan2(R[2, 1], sy)
 
-        # r (roll) comes from R[0,1], R[1,1]
+        # r (roll)은 R[0,1], R[1,1]에서 유래
         # R[0,1] = -s_z * c_x
         # R[1,1] =  c_z * c_x
         # tan(z) = -R[0,1] / R[1,1]
         r_cv = math.atan2(-R[0, 1], R[1, 1])
 
-        # y' (yaw) comes from R[2,0], R[2,2]
+        # y' (yaw)는 R[2,0], R[2,2]에서 유래
         # R[2,0] = -c_x * s_y
         # R[2,2] =  c_x * c_y
         # tan(y) = -R[2,0] / R[2,2]
         y_cv = math.atan2(-R[2, 0], R[2, 2])
     else:
-        # Gimbal lock: pitch is +/- 90 (cos(p') = 0)
+        # 짐벌 락: pitch가 +/- 90도 (cos(p') = 0)
         # R[2,1] ~ +/- 1
         p_cv = math.atan2(R[2, 1], sy)
 
-        # r_cv - y_cv (or +) ambiguity. Assume y_cv = 0
+        # r_cv - y_cv (또는 +) 모호성. y_cv = 0으로 가정
         y_cv = 0
         r_cv = math.atan2(R[1, 0], R[0, 0])
 
-    # deg conversion and sign flip
+    # 도(degree) 변환 및 부호 반전
     yaw = -math.degrees(y_cv)
     pitch = -math.degrees(p_cv)
     roll = math.degrees(r_cv)
@@ -99,10 +99,10 @@ def R_cam_to_euler(R):
 
 def eulerAnglesToRotationMatrix(yaw, pitch, roll):
     """
-    Convert Euler angles (degrees) to rotation matrix.
-    Order: Yaw(Z) -> Pitch(Y) -> Roll(X)
+    오일러 각(도)을 회전 행렬로 변환합니다.
+    순서: Yaw(Z) -> Pitch(Y) -> Roll(X)
     """
-    # Convert degrees to radians
+    # 도를 라디안으로 변환
     yaw_rad = math.radians(yaw)
     pitch_rad = math.radians(pitch)
     roll_rad = math.radians(roll)
@@ -125,8 +125,8 @@ def eulerAnglesToRotationMatrix(yaw, pitch, roll):
 
 def rotationMatrixToEulerAngles(R):
     """
-    Convert rotation matrix to Euler angles (degrees).
-    Returns: (yaw, pitch, roll)
+    회전 행렬을 오일러 각(도)으로 변환합니다.
+    반환: (yaw, pitch, roll)
     """
     sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
     singular = sy < 1e-6

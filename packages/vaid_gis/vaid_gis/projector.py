@@ -182,7 +182,7 @@ class MapProjector:
             proj_result: projection 메소드로부터 반환된 ProjectionResult 객체.
         """
         if not self.road_surface_triangulation or self.road_surface_vertices is None:
-            print(f"[ERROR] MapProjector: 도로면 모델이 없습니다. Unprojection을 수행할 수 없습니다.")
+            print(f"[오류] MapProjector: 도로면 모델이 없습니다. Unprojection을 수행할 수 없습니다.")
             return None
 
         C = np.array([params.x, params.y, params.z], np.float32)
@@ -203,7 +203,7 @@ class MapProjector:
             return intersect_point
 
         if not proj_result.unprojection_cache:
-            print(f"[WARNING] MapProjector: Unprojection 추론 실패 - 투영 캐시가 비어있습니다.")
+            print(f"[경고] MapProjector: Unprojection 추론 실패 - 투영 캐시가 비어있습니다.")
             return None
 
         click_p = np.array([u, v])
@@ -222,7 +222,7 @@ class MapProjector:
 
         
         if closest_cache_item is None:
-            print(f"[WARNING] MapProjector: Unprojection 추론 실패 - 가장 가까운 도로 경계선을 찾을 수 없습니다.")
+            print(f"[경고] MapProjector: Unprojection 추론 실패 - 가장 가까운 도로 경계선을 찾을 수 없습니다.")
             return None
 
         p2d_1, p2d_2 = map(np.array, closest_cache_item['2d_line_segment'])
@@ -240,7 +240,7 @@ class MapProjector:
             if s > 0:
                 return C + s * ray_dir_world
 
-        print(f"[WARNING] MapProjector: Unprojection 추론 실패 - 가상 갓길 평면과도 교차점을 찾을 수 없습니다.")
+        print(f"[경고] MapProjector: Unprojection 추론 실패 - 가상 갓길 평면과도 교차점을 찾을 수 없습니다.")
         return None
 
     def _preprocess_a2_segments(self):
@@ -327,7 +327,7 @@ class MapProjector:
             'lane_numbers': lane_numbers_list  # List[int or None] 차선 번호
         }
 
-        print(f"[INFO] MapProjector: A2 세그먼트 사전 처리 완료 - "
+        print(f"[정보] MapProjector: A2 세그먼트 사전 처리 완료 - "
               f"{len(a2_gdf)}개 LineString → {len(start_points)}개 세그먼트")
 
     def find_nearest_a2_segment(self, x: float, y: float, max_distance: float = 5.0) -> dict | None:

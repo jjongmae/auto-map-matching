@@ -1,5 +1,5 @@
 """
-Main window for Map Matching application
+맵 매칭 애플리케이션을 위한 메인 윈도우
 """
 import os
 import yaml
@@ -24,31 +24,31 @@ class MapMatcherWindow(QMainWindow):
         self.setWindowTitle("Map Matcher")
         self.setGeometry(100, 100, 1600, 900)
 
-        # --- Data Attributes ---
+        # --- 데이터 속성 ---
         self.position_controls = {}
         self.orientation_controls = {}
         self.intrinsic_controls = {}
         self.current_image_path = None
         self.current_camera_yaml = None
-        self.show_map_lines = True  # Default: show map lines
+        self.show_map_lines = True  # 기본값: 지도 선 표시
 
         # VAID GIS
         self.projector = None
         self.projected_map_data = None
         self.camera_params = CameraParams()
 
-        # --- UI Setup ---
+        # --- UI 설정 ---
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         root_layout = QVBoxLayout(central_widget)
         root_layout.setContentsMargins(10, 10, 10, 10)
         root_layout.setSpacing(10)
 
-        # Main content: Image (left) + Controls (right)
+        # 메인 콘텐츠: 이미지 (왼쪽) + 제어 (오른쪽)
         main_content = QHBoxLayout()
         root_layout.addLayout(main_content)
 
-        # Left: Image Display
+        # 왼쪽: 이미지 표시
         image_panel = QVBoxLayout()
         self.image_label = QLabel("이미지를 선택하세요")
         self.image_label.setAlignment(Qt.AlignCenter)
@@ -58,7 +58,7 @@ class MapMatcherWindow(QMainWindow):
         image_panel.addWidget(self._create_vision_group())
         main_content.addLayout(image_panel, 7)
 
-        # Right: Controls
+        # 오른쪽: 제어
         controls_panel = QVBoxLayout()
         main_content.addLayout(controls_panel, 3)
 
@@ -71,7 +71,7 @@ class MapMatcherWindow(QMainWindow):
         controls_panel.addWidget(self._create_actions_group())
         controls_panel.addStretch()
 
-        # Status Bar
+        # 상태 표시줄
         self.status_label = QLabel("준비 완료")
         self.status_label.setStyleSheet('''
             background-color: #F0F0F0;
@@ -83,7 +83,7 @@ class MapMatcherWindow(QMainWindow):
         ''')
         root_layout.addWidget(self.status_label)
 
-        # Initial camera list population
+        # 초기 카메라 목록 채우기
         self._populate_camera_list()
 
     def _create_camera_selection_group(self):
@@ -259,13 +259,13 @@ class MapMatcherWindow(QMainWindow):
         group = QGroupBox("Actions")
         layout = QVBoxLayout()
 
-        # Checkbox for showing/hiding map lines
+        # 지도 선 표시/숨기기를 위한 체크박스
         self.show_map_checkbox = QCheckBox("지도 선 표시")
-        self.show_map_checkbox.setChecked(True)  # Default: checked
+        self.show_map_checkbox.setChecked(True)  # 기본값: 선택됨
         self.show_map_checkbox.toggled.connect(self._on_map_visibility_changed)
         layout.addWidget(self.show_map_checkbox)
 
-        # Buttons
+        # 버튼
         button_layout = QHBoxLayout()
         save_btn = QPushButton("Save")
         reset_btn = QPushButton("Reset")
@@ -281,7 +281,7 @@ class MapMatcherWindow(QMainWindow):
         return group
 
     def _populate_camera_list(self):
-        """Scan camera folder for subfolders containing base.yaml"""
+        """base.yaml을 포함하는 하위 폴더에 대해 camera 폴더 스캔"""
         self.camera_combo.blockSignals(True)
         self.camera_combo.clear()
 
@@ -291,7 +291,7 @@ class MapMatcherWindow(QMainWindow):
             self.camera_combo.blockSignals(False)
             return
 
-        # Find folders with base.yaml
+        # base.yaml이 있는 폴더 찾기
         camera_folders = []
         for folder in camera_dir.iterdir():
             if folder.is_dir():
@@ -308,13 +308,13 @@ class MapMatcherWindow(QMainWindow):
 
         self.camera_combo.blockSignals(False)
 
-        # Auto-select first camera
+        # 첫 번째 카메라 자동 선택
         if camera_folders and self.camera_combo.count() > 0:
             self.camera_combo.setCurrentIndex(0)
             self._on_camera_selected(0)
 
     def _on_camera_selected(self, index):
-        """Load camera folder and base.yaml"""
+        """카메라 폴더 및 base.yaml 로드"""
         if index < 0:
             return
 
@@ -326,16 +326,16 @@ class MapMatcherWindow(QMainWindow):
             camera_folder_path = Path(camera_folder)
             camera_name = camera_folder_path.name
 
-            # Load base.yaml
+            # base.yaml 로드
             base_yaml_path = camera_folder_path / "base.yaml"
             with open(base_yaml_path, 'r') as f:
                 data = yaml.safe_load(f)
 
-            # Update camera params
+            # 카메라 파라미터 업데이트
             self.camera_params = CameraParams(**data)
             self.current_camera_yaml = str(base_yaml_path)
 
-            # Load map data
+            # 지도 데이터 로드
             shp_path = Path("shp") / camera_name
 
             if not shp_path.exists():
@@ -349,10 +349,10 @@ class MapMatcherWindow(QMainWindow):
                 radius=500
             )
 
-            # Populate controls
+            # 제어 항목 채우기
             self._populate_controls_from_params()
 
-            # Load images
+            # 이미지 로드
             self._populate_image_list(camera_name)
 
             self.status_label.setText(f"카메라 '{camera_name}' (base.yaml) 로드 완료")
@@ -363,7 +363,7 @@ class MapMatcherWindow(QMainWindow):
             traceback.print_exc()
 
     def _populate_image_list(self, camera_name):
-        """Load images from image/{camera_name}/ folder"""
+        """image/{camera_name}/ 폴더에서 이미지 로드"""
         self.image_list.clear()
 
         image_dir = Path("image") / camera_name
@@ -371,7 +371,7 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText(f"이미지 폴더를 찾을 수 없습니다: {image_dir}")
             return
 
-        # Find image files
+        # 이미지 파일 찾기
         image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp']
         image_files = []
         for ext in image_extensions:
@@ -385,11 +385,11 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText(f"이미지 폴더에 이미지가 없습니다: {image_dir}")
 
     def _on_image_selected(self, current, previous):
-        """Load and display selected image with map overlay"""
+        """지도 오버레이와 함께 선택한 이미지 로드 및 표시"""
         if not current:
             return
 
-        # Get camera folder and image info
+        # 카메라 폴더 및 이미지 정보 가져오기
         camera_folder = Path(self.current_camera_yaml).parent
         camera_name = camera_folder.name
         image_filename = current.text()
@@ -401,24 +401,24 @@ class MapMatcherWindow(QMainWindow):
 
         self.current_image_path = str(image_path)
 
-        # Try to find the best matching yaml file
+        # 가장 잘 일치하는 yaml 파일 찾기 시도
         yaml_to_use = None
         yaml_source_msg = ""
 
-        # 1. Try exact match: {image_name}.yaml
+        # 1. 정확한 일치 시도: {image_name}.yaml
         image_yaml = camera_folder / f"{image_name_no_ext}.yaml"
         if image_yaml.exists():
             yaml_to_use = image_yaml
             yaml_source_msg = f"이미지 '{image_filename}' 전용 설정 로드"
         else:
-            # 2. Try to find closest smaller numbered yaml
-            # Extract number from image filename
+            # 2. 가장 가까운 더 작은 번호의 yaml 찾기 시도
+            # 이미지 파일 이름에서 번호 추출
             import re
             match = re.search(r'(\d+)', image_name_no_ext)
             if match:
                 current_number = int(match.group(1))
 
-                # Find all numbered yaml files in camera folder
+                # 카메라 폴더의 모든 번호가 매겨진 yaml 파일 찾기
                 candidate_yamls = []
                 for yaml_file in camera_folder.glob("*.yaml"):
                     if yaml_file.name == "base.yaml":
@@ -429,18 +429,18 @@ class MapMatcherWindow(QMainWindow):
                         if yaml_number < current_number:
                             candidate_yamls.append((yaml_number, yaml_file))
 
-                # Use the closest one (largest number less than current)
+                # 가장 가까운 것 사용 (현재보다 작은 가장 큰 번호)
                 if candidate_yamls:
                     candidate_yamls.sort(reverse=True)
                     yaml_to_use = candidate_yamls[0][1]
                     yaml_source_msg = f"이미지 '{image_filename}' ({yaml_to_use.name} 사용)"
 
-            # 3. Fallback to base.yaml
+            # 3. base.yaml로 대체
             if yaml_to_use is None:
                 yaml_to_use = camera_folder / "base.yaml"
                 yaml_source_msg = f"이미지 '{image_filename}' (base.yaml 사용)"
 
-        # Load the selected yaml
+        # 선택된 yaml 로드
         try:
             with open(yaml_to_use, 'r') as f:
                 data = yaml.safe_load(f)
@@ -456,14 +456,14 @@ class MapMatcherWindow(QMainWindow):
         self._draw_image_with_overlay()
 
     def _populate_controls_from_params(self):
-        """Populate UI controls from camera_params"""
-        # Block all signals
+        """camera_params에서 UI 제어 항목 채우기"""
+        # 모든 신호 차단
         all_controls = list(self.position_controls.values()) + list(self.orientation_controls.values()) + list(self.intrinsic_controls.values())
         for ctrl in all_controls:
             ctrl['spinbox'].blockSignals(True)
             ctrl['slider'].blockSignals(True)
 
-        # Set position values
+        # 위치 값 설정
         for name, val in [('X', self.camera_params.x),
                          ('Y', self.camera_params.y),
                          ('Z', self.camera_params.z)]:
@@ -472,7 +472,7 @@ class MapMatcherWindow(QMainWindow):
             ctrl['spinbox'].setValue(val)
             ctrl['slider'].setValue(0)
 
-        # Set orientation values
+        # 방향 값 설정
         slider_scale = 1000
         for name, val in [('Yaw', self.camera_params.yaw),
                          ('Pitch', self.camera_params.pitch),
@@ -481,7 +481,7 @@ class MapMatcherWindow(QMainWindow):
             ctrl['spinbox'].setValue(val)
             ctrl['slider'].setValue(int(val * slider_scale))
 
-        # Set intrinsic values
+        # 내부 파라미터 값 설정
         slider_scale = 100
         for name, val in [('fx', self.camera_params.fx),
                          ('fy', self.camera_params.fy)]:
@@ -489,25 +489,25 @@ class MapMatcherWindow(QMainWindow):
             ctrl['spinbox'].setValue(val)
             ctrl['slider'].setValue(int(val * slider_scale))
 
-        # Unblock signals
+        # 신호 차단 해제
         for ctrl in all_controls:
             ctrl['spinbox'].blockSignals(False)
             ctrl['slider'].blockSignals(False)
 
-        # Update projection
+        # 투영 업데이트
         self._update_projection()
 
     def _on_map_visibility_changed(self, checked):
-        """Handle map visibility checkbox toggle"""
+        """지도 가시성 체크박스 토글 처리"""
         self.show_map_lines = checked
         self._draw_image_with_overlay()
 
     def _update_projection(self):
-        """Recalculate projection with current parameters"""
+        """현재 파라미터로 투영 재계산"""
         if not self.projector:
             return
 
-        # Update camera params from controls
+        # 제어 항목에서 카메라 파라미터 업데이트
         self.camera_params.x = self.position_controls['X']['spinbox'].value()
         self.camera_params.y = self.position_controls['Y']['spinbox'].value()
         self.camera_params.z = self.position_controls['Z']['spinbox'].value()
@@ -517,30 +517,30 @@ class MapMatcherWindow(QMainWindow):
         self.camera_params.fx = self.intrinsic_controls['fx']['spinbox'].value()
         self.camera_params.fy = self.intrinsic_controls['fy']['spinbox'].value()
 
-        # Recalculate projection
+        # 투영 재계산
         self.projected_map_data = self.projector.projection(self.camera_params).projected_layers
 
-        # Redraw image
+        # 이미지 다시 그리기
         self._draw_image_with_overlay()
 
     def _draw_image_with_overlay(self):
-        """Draw image with map projection overlay"""
+        """지도 투영 오버레이로 이미지 그리기"""
         if not self.current_image_path:
             return
 
-        # Load image
+        # 이미지 로드
         image = cv2.imread(self.current_image_path)
         if image is None:
             return
 
-        # Draw projection overlay (only if checkbox is checked)
+        # 투영 오버레이 그리기 (체크박스가 선택된 경우에만)
         if self.show_map_lines and self.projected_map_data:
-            # Draw b2 (lines) in cyan
+            # b2 (선)를 청록색으로 그리기
             if self.projected_map_data.get('b2'):
                 cv2.polylines(image, self.projected_map_data['b2'],
                             isClosed=False, color=(255, 255, 0), thickness=3)
 
-        # Convert to Qt and display
+        # Qt로 변환 및 표시
         h, w, ch = image.shape
         bytes_per_line = ch * w
         qt_image = QImage(image.data, w, h, bytes_per_line, QImage.Format_BGR888)
@@ -549,21 +549,21 @@ class MapMatcherWindow(QMainWindow):
         self.image_label.setPixmap(scaled)
 
     def _save_camera_yaml(self):
-        """Save current camera parameters to image-specific YAML"""
+        """현재 카메라 파라미터를 이미지별 YAML에 저장"""
         if not self.current_image_path:
             self.status_label.setText("이미지를 먼저 선택하세요")
             return
 
         try:
-            # Get camera folder and image name
+            # 카메라 폴더 및 이미지 이름 가져오기
             camera_folder = Path(self.current_camera_yaml).parent
             image_filename = Path(self.current_image_path).name
             image_name_no_ext = Path(image_filename).stem
 
-            # Save path: camera/{camera_name}/{image_name}.yaml
+            # 저장 경로: camera/{camera_name}/{image_name}.yaml
             save_path = camera_folder / f"{image_name_no_ext}.yaml"
 
-            # Update camera params from controls
+            # 제어 항목에서 카메라 파라미터 업데이트
             self.camera_params.x = self.position_controls['X']['spinbox'].value()
             self.camera_params.y = self.position_controls['Y']['spinbox'].value()
             self.camera_params.z = self.position_controls['Z']['spinbox'].value()
@@ -573,7 +573,7 @@ class MapMatcherWindow(QMainWindow):
             self.camera_params.fx = self.intrinsic_controls['fx']['spinbox'].value()
             self.camera_params.fy = self.intrinsic_controls['fy']['spinbox'].value()
 
-            # Convert to dict
+            # 딕셔너리로 변환
             data = {
                 'x': self.camera_params.x,
                 'y': self.camera_params.y,
@@ -594,7 +594,7 @@ class MapMatcherWindow(QMainWindow):
                 'resolution_height': self.camera_params.resolution_height,
             }
 
-            # Save to YAML
+            # YAML로 저장
             with open(save_path, 'w') as f:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
@@ -605,18 +605,18 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText(f"저장 오류: {e}")
 
     def _reset_to_yaml(self):
-        """Reset controls to values from YAML file (image-specific or base)"""
+        """YAML 파일(이미지별 또는 base)의 값으로 제어 항목 초기화"""
         if not self.current_image_path:
             self.status_label.setText("이미지를 먼저 선택하세요")
             return
 
         try:
-            # Get camera folder and image name
+            # 카메라 폴더 및 이미지 이름 가져오기
             camera_folder = Path(self.current_camera_yaml).parent
             image_filename = Path(self.current_image_path).name
             image_name_no_ext = Path(image_filename).stem
 
-            # Try to load image-specific yaml, fallback to base.yaml
+            # 이미지별 yaml 로드 시도, base.yaml로 대체
             image_yaml = camera_folder / f"{image_name_no_ext}.yaml"
             if image_yaml.exists():
                 yaml_path = image_yaml
@@ -637,7 +637,7 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText(f"리셋 오류: {e}")
 
     def _create_vision_group(self):
-        """Create a group box for computer vision tasks"""
+        """컴퓨터 비전 작업을 위한 그룹 박스 생성"""
         group = QGroupBox("Vision Tasks")
         layout = QHBoxLayout()
 
@@ -661,12 +661,12 @@ class MapMatcherWindow(QMainWindow):
         return group
 
     def _on_detect_vanishing_point_clicked(self):
-        """Open vanishing point detection dialog"""
+        """소실점 검출 대화상자 열기"""
         if not self.current_image_path:
             self.status_label.setText("이미지를 먼저 선택하세요")
             return
 
-        # Import here to avoid circular dependency
+        # 순환 종속성을 피하기 위해 여기서 임포트
         from app.ui.vanishing_point_dialog import VanishingPointDialog
 
         try:
@@ -679,11 +679,11 @@ class MapMatcherWindow(QMainWindow):
 
 
     def _on_compare_features_clicked(self):
-        """Open file dialog to select 2 images and match them"""
-        # Import here to avoid circular dependency
+        """파일 대화상자를 열어 2개의 이미지를 선택하고 매칭합니다."""
+        # 순환 종속성을 피하기 위해 여기서 임포트
         from app.ui.matcher_dialog import MatcherDialog
 
-        # Default dir
+        # 기본 디렉토리
         if self.current_image_path:
             init_dir = str(Path(self.current_image_path).parent)
         else:
@@ -712,11 +712,11 @@ class MapMatcherWindow(QMainWindow):
             traceback.print_exc()
 
     def _on_compare_features_orb_clicked(self):
-        """Open file dialog to select 2 images and match them using ORB"""
-        # Import here to avoid circular dependency
+        """파일 대화상자를 열어 2개의 이미지를 선택하고 ORB를 사용하여 매칭합니다."""
+        # 순환 종속성을 피하기 위해 여기서 임포트
         from app.ui.matcher_dialog_orb import MatcherDialogORB
 
-        # Default dir
+        # 기본 디렉토리
         if self.current_image_path:
             init_dir = str(Path(self.current_image_path).parent)
         else:

@@ -1,5 +1,5 @@
 """
-Map Matching UI - Application Entry Point
+맵 매칭 UI - 애플리케이션 진입점
 """
 import sys
 from PySide6.QtWidgets import QApplication

@@ -24,7 +24,7 @@ def load_shp_layers(layer_config: dict[str, str], center_point: Point, radius: i
     for name, shp_path_str in layer_config.items():
         shp_path = Path(shp_path_str)
         if not shp_path.exists():
-            print(f"[WARNING] Loader: 레이어 '{name}' - {shp_path}를 찾을 수 없습니다.")
+            print(f"[경고] Loader: 레이어 '{name}' - {shp_path}를 찾을 수 없습니다.")
             loaded_data[name] = gpd.GeoDataFrame()
             continue
         try:
@@ -33,10 +33,10 @@ def load_shp_layers(layer_config: dict[str, str], center_point: Point, radius: i
             possible_matches_index = list(sindex.intersection(search_area.bounds))
             possible_matches = gdf.iloc[possible_matches_index]
             intersecting = possible_matches[possible_matches.intersects(search_area)].copy()
-            print(f"[INFO] Loader: 레이어 '{name}' - {radius}m 반경 내에서 {len(intersecting)}개의 객체를 로드했습니다.")
+            print(f"[정보] Loader: 레이어 '{name}' - {radius}m 반경 내에서 {len(intersecting)}개의 객체를 로드했습니다.")
             loaded_data[name] = intersecting
         except Exception as e:
-            print(f"[ERROR] Loader: 레이어 '{name}' ({shp_path}) 처리 중 오류 - {e}")
+            print(f"[오류] Loader: 레이어 '{name}' ({shp_path}) 처리 중 오류 - {e}")
             loaded_data[name] = gpd.GeoDataFrame()
 
     return loaded_data
