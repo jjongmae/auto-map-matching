@@ -27,6 +27,9 @@ def compute_sift_matches(img1: np.ndarray, img2: np.ndarray,
     kp1, des1 = sift.detectAndCompute(img1, None)
     kp2, des2 = sift.detectAndCompute(img2, None)
 
+    print(f"[SIFT] 이미지1 키포인트: {len(kp1)}개 검출")
+    print(f"[SIFT] 이미지2 키포인트: {len(kp2)}개 검출")
+
     if des1 is None or des2 is None:
         return kp1, kp2, []
 
@@ -51,12 +54,16 @@ def compute_sift_matches(img1: np.ndarray, img2: np.ndarray,
     good = []
     matches_21_map = {m.queryIdx: m.trainIdx for m in good_21}
 
+    print(f"[SIFT] 1차 매칭(A->B) 통과: {len(good_12)}개")
+    
     for m in good_12:
         # m.queryIdx는 A, m.trainIdx는 B
         # B(m.trainIdx)가 A(m.queryIdx)로 다시 매핑되는지 확인
         if m.trainIdx in matches_21_map:
             if matches_21_map[m.trainIdx] == m.queryIdx:
                 good.append(m)
+
+    print(f"[SIFT] 최종 상호 매칭(Cross Check): {len(good)}개")
 
     return kp1, kp2, good
 
@@ -80,6 +87,9 @@ def compute_orb_matches(img1: np.ndarray, img2: np.ndarray,
     # 검출 및 계산
     kp1, des1 = orb.detectAndCompute(img1, None)
     kp2, des2 = orb.detectAndCompute(img2, None)
+
+    print(f"[ORB] 이미지1 키포인트: {len(kp1)}개 검출")
+    print(f"[ORB] 이미지2 키포인트: {len(kp2)}개 검출")
 
     if des1 is None or des2 is None:
         return kp1, kp2, []
@@ -109,12 +119,16 @@ def compute_orb_matches(img1: np.ndarray, img2: np.ndarray,
     good = []
     matches_21_map = {m.queryIdx: m.trainIdx for m in good_21}
 
+    print(f"[ORB] 1차 매칭(A->B) 통과: {len(good_12)}개")
+
     for m in good_12:
         # m.queryIdx는 A, m.trainIdx는 B
         # B(m.trainIdx)가 A(m.queryIdx)로 다시 매핑되는지 확인
         if m.trainIdx in matches_21_map:
             if matches_21_map[m.trainIdx] == m.queryIdx:
                 good.append(m)
+
+    print(f"[ORB] 최종 상호 매칭(Cross Check): {len(good)}개")
 
     return kp1, kp2, good
 
@@ -139,10 +153,14 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
         (R_relative, t_relative, inlier_matches)의 튜플
     """
     if len(good_matches) < 5:
+        print(f"[Pose] 매칭 포인트 부족: {len(good_matches)}개 (최소 5개 필요)")
         return None, None, []
+
+    print(f"[Pose] 포즈 추정 입력 매칭 수: {len(good_matches)}개")
 
     # 매칭 거리로 정렬하고 상위 N개 가져오기
     good_sorted = sorted(good_matches, key=lambda x: x.distance)[:max_matches]
+    print(f"[Pose] 상위 {len(good_sorted)}개 매칭 포인트 사용 (최대 {max_matches}개 제한)")
 
     # 포인트 추출
     src_pts = np.float32([kp1[m.queryIdx].pt for m in good_sorted]).reshape(-1, 1, 2)
@@ -173,10 +191,18 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
     )
 
     if E is None or E.shape != (3, 3):
+        print(f"[Pose] Essential Matrix 계산 실패 또는 유효하지 않은 형태")
         return None, None, []
+
+    inliers_E = np.sum(mask) if mask is not None else 0
+    print(f"[Pose] Essential Matrix 계산 성공 (RANSAC). 인라이어 수: {inliers_E}")
 
     # 포즈(R, t) 복원
     _, R_rel, t_rel, mask_pose = cv2.recoverPose(E, src_norm, dst_norm)
+
+    inliers_pose = np.sum(mask_pose) if mask_pose is not None else 0
+    print(f"[Pose] 포즈(R, t) 복원 완료. 최종 인라이어: {inliers_pose}")
+    # print(f"[Pose] 추정된 평행이동 벡터(t):\n{t_rel.flatten()}")
 
     # 포즈 계산에 투입된 상위 매칭 점(good_sorted)을 모두 그대로 반환하여 시각화합니다.
     return R_rel, t_rel, good_sorted
