@@ -9,6 +9,7 @@ camera/
 image/
 shp/
 models/
+lane_gt/
 
 # Python
 __pycache__/

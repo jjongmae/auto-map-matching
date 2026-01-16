@@ -650,11 +650,14 @@ class MapMatcherWindow(QMainWindow):
         self.btn_detect_vp = QPushButton("소실점 검출\n(LSD + RANSAC)")
         self.btn_detect_vp.clicked.connect(self._on_detect_vanishing_point_clicked)
 
+        self.btn_lane_annotation = QPushButton("차선 라벨링\n(수동)")
+        self.btn_lane_annotation.clicked.connect(self._on_lane_annotation_clicked)
+
         layout.addWidget(self.btn_compare_features)
         layout.addWidget(self.btn_compare_features_orb)
         layout.addWidget(self.btn_detect_vp)
+        layout.addWidget(self.btn_lane_annotation)
 
-        # Future buttons can be added here
         layout.addStretch()
 
         group.setLayout(layout)
@@ -741,5 +744,21 @@ class MapMatcherWindow(QMainWindow):
             dialog.exec()
         except Exception as e:
             self.status_label.setText(f"ORB 매칭 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_lane_annotation_clicked(self):
+        """차선 정답지 생성 대화상자 열기"""
+        if not self.current_image_path:
+            self.status_label.setText("이미지를 먼저 선택하세요")
+            return
+
+        from app.ui.lane_labeling_dialog import LaneLabelingDialog
+
+        try:
+            dialog = LaneLabelingDialog(self.current_image_path, self)
+            dialog.exec()
+        except Exception as e:
+            self.status_label.setText(f"차선 라벨링 오류: {e}")
             import traceback
             traceback.print_exc()
