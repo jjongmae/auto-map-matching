@@ -178,15 +178,8 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
     # 포즈(R, t) 복원
     _, R_rel, t_rel, mask_pose = cv2.recoverPose(E, src_norm, dst_norm)
 
-    # 표시를 위한 인라이어 필터링
-    inliers = []
-    if mask_pose is not None:
-        matchesMask = mask_pose.ravel().tolist()
-        inliers = [m for i, m in enumerate(good_sorted) if matchesMask[i]]
-    else:
-        inliers = good_sorted
-
-    return R_rel, t_rel, inliers
+    # 포즈 계산에 투입된 상위 매칭 점(good_sorted)을 모두 그대로 반환하여 시각화합니다.
+    return R_rel, t_rel, good_sorted
 
 
 def visualize_matches(img1: np.ndarray, img2: np.ndarray,
