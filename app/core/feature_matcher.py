@@ -172,7 +172,7 @@ def estimate_relative_pose(kp1, kp2, good_matches, camera_params: Dict,
         method=cv2.RANSAC, prob=0.999, threshold=0.001
     )
 
-    if E is None:
+    if E is None or E.shape != (3, 3):
         return None, None, []
 
     # 포즈(R, t) 복원
