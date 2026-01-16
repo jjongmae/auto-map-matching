@@ -171,6 +171,83 @@ class MapProjector:
                             })
         return ProjectionResult(projected_layers=projected_layers, unprojection_cache=unprojection_cache)
 
+    def projection_float(self, params: CameraParams, target_layers: List[str] = None) -> Dict[str, List[np.ndarray]]:
+        """
+        최적화를 위한 고정밀 투영 함수.
+        1. 정수형 변환(픽셀화)을 수행하지 않고 실수형 좌표를 그대로 반환합니다.
+        2. 역투영 캐시를 생성하지 않아 속도가 빠릅니다.
+        
+        Args:
+            params: 카메라 파라미터
+            target_layers: 투영할 레이어 이름 리스트 (None일 경우 b2만 기본 처리)
+            
+        Returns:
+            Dict[str, List[np.ndarray]]: 투영된 레이어 데이터 (키: 레이어 이름, 값: 좌표 배열 리스트)
+        """
+        C = np.array([params.x, params.y, params.z], np.float32)
+        R_cam = geometry.cam_rotation(params.yaw, params.pitch, params.roll)
+        R_tot = R_cam @ geometry.B_ENU2CV
+        
+        projected_layers = {}
+        if target_layers is None:
+            target_layers = ["b2"]
+            
+        for layer_name in target_layers:
+            projected_layers[layer_name] = []
+        
+        # Define screen boundaries with a margin
+        margin = 2000
+        min_u, max_u = -margin, params.resolution_width + margin
+        min_v, max_v = -margin, params.resolution_height + margin
+        
+        # 1. 일반 벡터 레이어 투영
+        layers_to_project = {name: self.layers.get(name) for name in target_layers if name in self.layers}
+        
+        for name, gdf in layers_to_project.items():
+            if gdf is None or gdf.empty: continue
+            for geom in gdf.geometry:
+                geoms = geom.geoms if hasattr(geom, 'geoms') else [geom.exterior if isinstance(geom, Polygon) else geom]
+                for line in geoms:
+                    if line is None or line.is_empty: continue
+                    pts_w = np.asarray(line.coords, np.float32)
+                    if pts_w.shape[0] < 2: continue
+                    if pts_w.shape[1] == 2 and self.road_surface_interpolator:
+                        z = self.road_surface_interpolator(pts_w)
+                        pts_w = np.hstack([pts_w, np.nan_to_num(z)[:, np.newaxis]])
+                    
+                    Pc = (pts_w - C) @ R_tot.T
+                    z_cam = Pc[:, 2]
+                    mask = (z_cam > params.near) & (z_cam < params.far)
+                    if not np.any(mask): continue
+
+                    x_n = Pc[mask, 0] / z_cam[mask]
+                    y_n = Pc[mask, 1] / z_cam[mask]
+                    x_d, y_d = geometry.distort(x_n, y_n, params.k1, params.k2, params.p1, params.p2, params.k3)
+                    u = params.fx * x_d + params.cx
+                    v = params.fy * y_d + params.cy
+                    
+                    # Float 좌표 유지
+                    points_2d_float = np.stack([u, v], axis=1)
+                    
+                    # NaN/Inf 필터링
+                    finite_mask = np.all(np.isfinite(points_2d_float), axis=1)
+                    finite_points = points_2d_float[finite_mask]
+                    
+                    if finite_points.shape[0] == 0: continue
+
+                    # 화면 경계 필터링
+                    boundary_mask = (
+                        (finite_points[:, 0] >= min_u) & (finite_points[:, 0] <= max_u) &
+                        (finite_points[:, 1] >= min_v) & (finite_points[:, 1] <= max_v)
+                    )
+                    final_points = finite_points[boundary_mask]
+
+                    # 정수 변환 없이 그대로 저장
+                    if final_points.shape[0] > 0:
+                        projected_layers[name].append(final_points)
+
+        return projected_layers
+
     def unprojection(self, u: float, v: float, params: CameraParams, proj_result: ProjectionResult) -> np.ndarray | None:
         """
         2D 픽셀을 3D 월드 좌표로 역투영합니다.

@@ -653,10 +653,22 @@ class MapMatcherWindow(QMainWindow):
         self.btn_lane_annotation = QPushButton("차선 라벨링\n(수동)")
         self.btn_lane_annotation.clicked.connect(self._on_lane_annotation_clicked)
 
+        self.btn_lane_fit_powell = QPushButton("차선 피팅\n(Powell)")
+        self.btn_lane_fit_powell.clicked.connect(lambda: self._on_lane_fit_clicked('powell'))
+
+        self.btn_lane_fit_nm = QPushButton("차선 피팅\n(Nelder-Mead)")
+        self.btn_lane_fit_nm.clicked.connect(lambda: self._on_lane_fit_clicked('nelder_mead'))
+
+        self.btn_lane_fit_lm = QPushButton("차선 피팅\n(LM)")
+        self.btn_lane_fit_lm.clicked.connect(lambda: self._on_lane_fit_clicked('lm'))
+
         layout.addWidget(self.btn_compare_features)
         layout.addWidget(self.btn_compare_features_orb)
         layout.addWidget(self.btn_detect_vp)
         layout.addWidget(self.btn_lane_annotation)
+        layout.addWidget(self.btn_lane_fit_powell)
+        layout.addWidget(self.btn_lane_fit_nm)
+        layout.addWidget(self.btn_lane_fit_lm)
 
         layout.addStretch()
 
@@ -760,5 +772,102 @@ class MapMatcherWindow(QMainWindow):
             dialog.exec()
         except Exception as e:
             self.status_label.setText(f"차선 라벨링 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_lane_fit_clicked(self, algorithm='powell'):
+        """라벨링된 차선에 맞춰 카메라 파라미터 자동 피팅"""
+        import json
+
+        algorithm_names = {
+            'powell': 'Powell',
+            'nelder_mead': 'Nelder-Mead',
+            'lm': 'LM'
+        }
+
+        if not self.current_image_path:
+            self.status_label.setText("이미지를 먼저 선택하세요")
+            return
+
+        if not self.projector:
+            self.status_label.setText("지도 데이터가 로드되지 않았습니다")
+            return
+
+        # 차선 라벨링 데이터 경로 계산
+        img_path = Path(self.current_image_path)
+        parts = list(img_path.parts)
+
+        if 'image' in parts:
+            idx = parts.index('image')
+            parts[idx] = 'lane_gt'
+            json_path = Path(*parts).with_suffix('.json')
+        else:
+            self.status_label.setText("이미지 경로에서 lane_gt 폴더를 찾을 수 없습니다")
+            return
+
+        # 라벨링 데이터 로드
+        if not json_path.exists():
+            self.status_label.setText(f"차선 라벨링 파일이 없습니다: {json_path.name}")
+            return
+
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            self.status_label.setText(f"라벨링 파일 로드 오류: {e}")
+            return
+
+        lanes = data.get('lanes', [])
+        if not lanes:
+            self.status_label.setText("라벨링된 차선이 없습니다")
+            return
+
+        # 모든 차선의 점을 하나로 합침
+        all_points = []
+        for lane in lanes:
+            all_points.extend(lane.get('points', []))
+
+        if len(all_points) < 2:
+            self.status_label.setText("라벨링 점이 부족합니다 (최소 2개 필요)")
+            return
+
+        self.status_label.setText(f"차선 피팅 중... ({algorithm_names.get(algorithm, algorithm)})")
+
+        # 알고리즘별 함수 선택
+        from app.core.auto_fitter import fit_powell, fit_nelder_mead, fit_lm
+
+        fit_functions = {
+            'powell': fit_powell,
+            'nelder_mead': fit_nelder_mead,
+            'lm': fit_lm
+        }
+
+        fit_func = fit_functions.get(algorithm, fit_powell)
+
+        try:
+            result = fit_func(self.projector, self.camera_params, all_points)
+
+            if result is None:
+                self.status_label.setText("차선 피팅 실패")
+                return
+
+            # 최적화된 파라미터로 UI 업데이트
+            self.camera_params.yaw = result['yaw']
+            self.camera_params.pitch = result['pitch']
+            self.camera_params.roll = result['roll']
+            self.camera_params.fx = result['fx']
+            self.camera_params.fy = result['fy']
+
+            # 컨트롤 값 업데이트
+            self._populate_controls_from_params()
+
+            self.status_label.setText(
+                f"[{algorithm_names.get(algorithm, algorithm)}] 완료 - "
+                f"yaw: {result['yaw']:.2f}, pitch: {result['pitch']:.2f}, "
+                f"roll: {result['roll']:.2f}, fx: {result['fx']:.1f}, fy: {result['fy']:.1f}"
+            )
+
+        except Exception as e:
+            self.status_label.setText(f"차선 피팅 오류: {e}")
             import traceback
             traceback.print_exc()
