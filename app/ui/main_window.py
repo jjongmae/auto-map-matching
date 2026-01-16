@@ -647,8 +647,7 @@ class MapMatcherWindow(QMainWindow):
         self.btn_compare_features_orb = QPushButton("특징점 매칭\n(ORB)")
         self.btn_compare_features_orb.clicked.connect(self._on_compare_features_orb_clicked)
 
-        self.btn_detect_vp = QPushButton("소실점 검출\n(LSD + RANSAC)")
-        self.btn_detect_vp.clicked.connect(self._on_detect_vanishing_point_clicked)
+
 
         self.btn_lane_annotation = QPushButton("차선 라벨링\n(수동)")
         self.btn_lane_annotation.clicked.connect(self._on_lane_annotation_clicked)
@@ -664,7 +663,7 @@ class MapMatcherWindow(QMainWindow):
 
         layout.addWidget(self.btn_compare_features)
         layout.addWidget(self.btn_compare_features_orb)
-        layout.addWidget(self.btn_detect_vp)
+
         layout.addWidget(self.btn_lane_annotation)
         layout.addWidget(self.btn_lane_fit_powell)
         layout.addWidget(self.btn_lane_fit_nm)
@@ -675,22 +674,7 @@ class MapMatcherWindow(QMainWindow):
         group.setLayout(layout)
         return group
 
-    def _on_detect_vanishing_point_clicked(self):
-        """소실점 검출 대화상자 열기"""
-        if not self.current_image_path:
-            self.status_label.setText("이미지를 먼저 선택하세요")
-            return
 
-        # 순환 종속성을 피하기 위해 여기서 임포트
-        from app.ui.vanishing_point_dialog import VanishingPointDialog
-
-        try:
-            dialog = VanishingPointDialog(self.current_image_path, self)
-            dialog.exec()
-        except Exception as e:
-            self.status_label.setText(f"소실점 검출 오류: {e}")
-            import traceback
-            traceback.print_exc()
 
 
     def _on_compare_features_clicked(self):
