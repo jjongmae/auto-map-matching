@@ -94,7 +94,21 @@ def R_cam_to_euler(R):
     pitch = -math.degrees(p_cv)
     roll = math.degrees(r_cv)
 
+    # 반환 전 정규화
+    yaw = normalize_angle(yaw)
+    roll = normalize_angle(roll)
+    # pitch는 R_cam_to_euler 로직상 이미 -90~90 범위에 있음 (atan2 사용)
+
     return yaw, pitch, roll
+
+
+def normalize_angle(angle):
+    """각도를 -180 ~ 180 범위로 정규화합니다."""
+    while angle > 180:
+        angle -= 360
+    while angle <= -180:
+        angle += 360
+    return angle
 
 
 def eulerAnglesToRotationMatrix(yaw, pitch, roll):

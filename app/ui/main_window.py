@@ -178,6 +178,11 @@ class MapMatcherWindow(QMainWindow):
 
             min_val, max_val = ranges[name]
             spinbox.setRange(min_val, max_val)
+            
+            # Yaw와 Roll은 360도 회전이므로 값이 순환되도록 설정 (180 -> -180)
+            if name in ["Yaw", "Roll"]:
+                spinbox.setWrapping(True)
+                
             spinbox.setDecimals(3)
             spinbox.setSingleStep(0.1)
 
@@ -759,6 +764,25 @@ class MapMatcherWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
+    def _normalize_angle(self, angle):
+        """각도를 -180 ~ 180 범위로 정규화 (yaw, roll용)"""
+        # 각도를 -180 ~ 180 범위로 변환
+        while angle > 180:
+            angle -= 360
+        while angle < -180:
+            angle += 360
+        return angle
+
+    def _normalize_pitch(self, pitch):
+        """pitch를 -90 ~ 90 범위로 정규화"""
+        # pitch는 -90 ~ 90 범위로 제한
+        # 범위를 벗어나면 클램핑
+        if pitch > 90:
+            return 90
+        elif pitch < -90:
+            return -90
+        return pitch
+
     def _on_lane_fit_clicked(self, algorithm='powell'):
         """라벨링된 차선에 맞춰 카메라 파라미터 자동 피팅"""
         import json
@@ -835,10 +859,10 @@ class MapMatcherWindow(QMainWindow):
                 self.status_label.setText("차선 피팅 실패")
                 return
 
-            # 최적화된 파라미터로 UI 업데이트
-            self.camera_params.yaw = result['yaw']
-            self.camera_params.pitch = result['pitch']
-            self.camera_params.roll = result['roll']
+            # 최적화된 파라미터로 UI 업데이트 (각도 범위에 맞게 정규화)
+            self.camera_params.yaw = self._normalize_angle(result['yaw'])
+            self.camera_params.pitch = self._normalize_pitch(result['pitch'])
+            self.camera_params.roll = self._normalize_angle(result['roll'])
             self.camera_params.fx = result['fx']
             self.camera_params.fy = result['fy']
 
@@ -847,8 +871,8 @@ class MapMatcherWindow(QMainWindow):
 
             self.status_label.setText(
                 f"[{algorithm_names.get(algorithm, algorithm)}] 완료 - "
-                f"yaw: {result['yaw']:.2f}, pitch: {result['pitch']:.2f}, "
-                f"roll: {result['roll']:.2f}, fx: {result['fx']:.1f}, fy: {result['fy']:.1f}"
+                f"yaw: {self.camera_params.yaw:.2f}, pitch: {self.camera_params.pitch:.2f}, "
+                f"roll: {self.camera_params.roll:.2f}, fx: {result['fx']:.1f}, fy: {result['fy']:.1f}"
             )
 
         except Exception as e:
