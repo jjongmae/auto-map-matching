@@ -12,14 +12,14 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
     opt_params = copy.deepcopy(camera_params)
 
     def cost_function(params):
-        yaw, pitch, roll, fx, fy = params
+        yaw, pitch, roll, f = params
         iteration_count[0] += 1
 
         opt_params.yaw = yaw
         opt_params.pitch = pitch
         opt_params.roll = roll
-        opt_params.fx = fx
-        opt_params.fy = fy
+        opt_params.fx = f
+        opt_params.fy = f
 
         try:
             # 실수형 좌표 투영 사용 (최적화용)
@@ -62,14 +62,14 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
     opt_params = copy.deepcopy(camera_params)
 
     def residual_function(params):
-        yaw, pitch, roll, fx, fy = params
+        yaw, pitch, roll, f = params
         iteration_count[0] += 1
 
         opt_params.yaw = yaw
         opt_params.pitch = pitch
         opt_params.roll = roll
-        opt_params.fx = fx
-        opt_params.fy = fy
+        opt_params.fx = f
+        opt_params.fy = f
 
         try:
             # 실수형 좌표 투영 사용 (최적화용)
@@ -119,18 +119,16 @@ def _prepare_optimization(projector, camera_params, lane_points):
         camera_params.yaw,
         camera_params.pitch,
         camera_params.roll,
-        camera_params.fx,
-        camera_params.fy
+        camera_params.fx  # fx를 기준으로 f 통합 (fx = fy)
     ])
     print(f"[auto_fitter] 초기값: yaw={initial_params[0]:.2f}, pitch={initial_params[1]:.2f}, "
-          f"roll={initial_params[2]:.2f}, fx={initial_params[3]:.1f}, fy={initial_params[4]:.1f}")
+          f"roll={initial_params[2]:.2f}, f={initial_params[3]:.1f}")
 
     bounds = [
-        (initial_params[0] - 10, initial_params[0] + 10),
-        (initial_params[1] - 10, initial_params[1] + 10),
-        (initial_params[2] - 10, initial_params[2] + 10),
-        (max(100, initial_params[3] * 0.8), initial_params[3] * 1.2),
-        (max(100, initial_params[4] * 0.8), initial_params[4] * 1.2),
+        (initial_params[0] - 20, initial_params[0] + 20),  # yaw
+        (initial_params[1] - 20, initial_params[1] + 20),  # pitch
+        (initial_params[2] - 1, initial_params[2] + 1),    # roll (PTZ 카메라: 거의 고정)
+        (max(100, initial_params[3] * 0.8), initial_params[3] * 1.2),  # f (fx = fy)
     ]
 
     return lane_pts, initial_params, bounds
@@ -139,15 +137,16 @@ def _prepare_optimization(projector, camera_params, lane_points):
 def _extract_result(result, method_name):
     """최적화 결과 추출"""
     optimized = result.x
+    f = optimized[3]
     print(f"[auto_fitter] {method_name} 완료: yaw={optimized[0]:.2f}, pitch={optimized[1]:.2f}, "
-          f"roll={optimized[2]:.2f}, fx={optimized[3]:.1f}, fy={optimized[4]:.1f}")
+          f"roll={optimized[2]:.2f}, f={f:.1f}")
 
     return {
         'yaw': optimized[0],
         'pitch': optimized[1],
         'roll': optimized[2],
-        'fx': optimized[3],
-        'fy': optimized[4]
+        'fx': f,
+        'fy': f
     }
 
 
@@ -167,7 +166,7 @@ def fit_powell(projector, camera_params, lane_points):
         initial_params,
         method='Powell',
         bounds=bounds,
-        options={'maxiter': 200, 'ftol': 0.1}
+        options={'maxiter': 500, 'ftol': 0.05}
     )
 
     print(f"[auto_fitter] iterations={result.nit}, final_cost={result.fun:.2f}")
@@ -189,7 +188,7 @@ def fit_nelder_mead(projector, camera_params, lane_points):
         cost_fn,
         initial_params,
         method='Nelder-Mead',
-        options={'maxiter': 500, 'xatol': 0.01, 'fatol': 0.1}
+        options={'maxiter': 500, 'xatol': 0.01, 'fatol': 0.05}
     )
 
     # 경계 적용 (Nelder-Mead는 경계를 직접 지원하지 않음)
