@@ -3,7 +3,7 @@
 """
 import copy
 import numpy as np
-from scipy.optimize import minimize, least_squares
+from scipy.optimize import minimize, least_squares, differential_evolution
 from scipy.spatial.distance import cdist
 
 
@@ -233,3 +233,33 @@ def fit_lm(projector, camera_params, lane_points):
     final_cost = np.mean(result.fun)
     print(f"[auto_fitter] nfev={result.nfev}, final_mean_dist={final_cost:.2f}")
     return _extract_result(result, "LM")
+
+
+def fit_differential_evolution(projector, camera_params, lane_points):
+    """Differential Evolution 알고리즘으로 최적화 (진화 알고리즘 기반, 글로벌 최적화)"""
+    prep = _prepare_optimization(projector, camera_params, lane_points)
+    if prep is None:
+        return None
+
+    lane_pts, initial_params, bounds = prep
+    iteration_count = [0]
+    cost_fn = _create_cost_function(projector, camera_params, lane_pts, iteration_count)
+
+    print("[auto_fitter] Differential Evolution 알고리즘 시작...")
+    result = differential_evolution(
+        cost_fn,
+        bounds=bounds,
+        seed=42,             # 재현성 보장
+        maxiter=500,         # 최대 세대 수
+        popsize=15,          # 개체군 크기 (파라미터 수 × 3-4)
+        atol=0.05,           # 절대 허용 오차
+        tol=0.05,            # 상대 허용 오차
+        workers=1,           # 단일 스레드 (안정성)
+        updating='deferred', # 비동기 업데이트 (수렴 속도 향상)
+        strategy='best1bin', # 기본 전략 (균형잡힌 성능)
+        mutation=(0.5, 1.5), # 변이 상수 범위
+        recombination=0.7    # 재조합 확률
+    )
+
+    print(f"[auto_fitter] iterations={result.nit}, final_cost={result.fun:.2f}")
+    return _extract_result(result, "Differential Evolution")

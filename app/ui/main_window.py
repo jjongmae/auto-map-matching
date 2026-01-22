@@ -666,6 +666,9 @@ class MapMatcherWindow(QMainWindow):
         self.btn_lane_fit_lm = QPushButton("차선 피팅\n(LM)")
         self.btn_lane_fit_lm.clicked.connect(lambda: self._on_lane_fit_clicked('lm'))
 
+        self.btn_lane_fit_de = QPushButton("차선 피팅\n(DE)")
+        self.btn_lane_fit_de.clicked.connect(lambda: self._on_lane_fit_clicked('differential_evolution'))
+
         layout.addWidget(self.btn_compare_features)
         layout.addWidget(self.btn_compare_features_orb)
 
@@ -673,6 +676,7 @@ class MapMatcherWindow(QMainWindow):
         layout.addWidget(self.btn_lane_fit_powell)
         layout.addWidget(self.btn_lane_fit_nm)
         layout.addWidget(self.btn_lane_fit_lm)
+        layout.addWidget(self.btn_lane_fit_de)
 
         layout.addStretch()
 
@@ -790,7 +794,8 @@ class MapMatcherWindow(QMainWindow):
         algorithm_names = {
             'powell': 'Powell',
             'nelder_mead': 'Nelder-Mead',
-            'lm': 'LM'
+            'lm': 'LM',
+            'differential_evolution': 'Differential Evolution'
         }
 
         if not self.current_image_path:
@@ -842,12 +847,13 @@ class MapMatcherWindow(QMainWindow):
         self.status_label.setText(f"차선 피팅 중... ({algorithm_names.get(algorithm, algorithm)})")
 
         # 알고리즘별 함수 선택
-        from app.core.auto_fitter import fit_powell, fit_nelder_mead, fit_lm
+        from app.core.auto_fitter import fit_powell, fit_nelder_mead, fit_lm, fit_differential_evolution
 
         fit_functions = {
             'powell': fit_powell,
             'nelder_mead': fit_nelder_mead,
-            'lm': fit_lm
+            'lm': fit_lm,
+            'differential_evolution': fit_differential_evolution
         }
 
         fit_func = fit_functions.get(algorithm, fit_powell)
