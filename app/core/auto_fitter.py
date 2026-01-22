@@ -183,7 +183,7 @@ def fit_nelder_mead(projector, camera_params, lane_points):
     iteration_count = [0]
     cost_fn = _create_cost_function(projector, camera_params, lane_pts, iteration_count)
 
-    print("[auto_fitter] Nelder-Mead 알고리즘 시작...")
+    print("[auto_fitter] NM 알고리즘 시작...")
     result = minimize(
         cost_fn,
         initial_params,
@@ -198,7 +198,7 @@ def fit_nelder_mead(projector, camera_params, lane_points):
     result.x = optimized
 
     print(f"[auto_fitter] iterations={result.nit}, final_cost={result.fun:.2f}")
-    return _extract_result(result, "Nelder-Mead")
+    return _extract_result(result, "NM")
 
 
 def fit_lm(projector, camera_params, lane_points):

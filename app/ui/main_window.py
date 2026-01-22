@@ -660,7 +660,7 @@ class MapMatcherWindow(QMainWindow):
         self.btn_lane_fit_powell = QPushButton("차선 피팅\n(Powell)")
         self.btn_lane_fit_powell.clicked.connect(lambda: self._on_lane_fit_clicked('powell'))
 
-        self.btn_lane_fit_nm = QPushButton("차선 피팅\n(Nelder-Mead)")
+        self.btn_lane_fit_nm = QPushButton("차선 피팅\n(NM)")
         self.btn_lane_fit_nm.clicked.connect(lambda: self._on_lane_fit_clicked('nelder_mead'))
 
         self.btn_lane_fit_lm = QPushButton("차선 피팅\n(LM)")
@@ -793,9 +793,9 @@ class MapMatcherWindow(QMainWindow):
 
         algorithm_names = {
             'powell': 'Powell',
-            'nelder_mead': 'Nelder-Mead',
+            'nelder_mead': 'NM',
             'lm': 'LM',
-            'differential_evolution': 'Differential Evolution'
+            'differential_evolution': 'DE'
         }
 
         if not self.current_image_path:
