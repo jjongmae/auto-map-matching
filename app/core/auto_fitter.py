@@ -26,10 +26,14 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
             projected_layers = projector.projection_float(opt_params, target_layers=['b2'])
 
             if not projected_layers or 'b2' not in projected_layers:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e10 (투영 실패: 레이어 없음), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return 1e10
 
             b2_lines = projected_layers['b2']
             if not b2_lines:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e10 (투영 실패: b2 라인 없음), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return 1e10
 
             projected_pts = []
@@ -38,6 +42,8 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
                     projected_pts.append(pt)
 
             if not projected_pts:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e10 (투영 실패: 점 없음), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return 1e10
 
             projected_pts = np.array(projected_pts, dtype=np.float64)
@@ -46,7 +52,7 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
             cost = np.mean(min_distances)
 
             if iteration_count[0] % 20 == 1:
-                print(f"[auto_fitter] iter {iteration_count[0]}: cost={cost:.2f}")
+                print(f"[auto_fitter] iter {iteration_count[0]}: cost={cost:.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(projected_pts)}")
 
             return cost
 
@@ -76,10 +82,14 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
             projected_layers = projector.projection_float(opt_params, target_layers=['b2'])
 
             if not projected_layers or 'b2' not in projected_layers:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e5 (투영 실패: 레이어 없음), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return np.full(len(lane_pts), 1e5)
 
             b2_lines = projected_layers['b2']
             if not b2_lines:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e5 (투영 실패: b2 라인 없음), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return np.full(len(lane_pts), 1e5)
 
             projected_pts = []
@@ -88,6 +98,8 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
                     projected_pts.append(pt)
 
             if not projected_pts:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e5 (투영 실패: 점 없음), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return np.full(len(lane_pts), 1e5)
 
             projected_pts = np.array(projected_pts, dtype=np.float64)
@@ -95,7 +107,7 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
             min_distances = np.min(distances, axis=1)
 
             if iteration_count[0] % 20 == 1:
-                print(f"[auto_fitter] iter {iteration_count[0]}: mean_dist={np.mean(min_distances):.2f}")
+                print(f"[auto_fitter] iter {iteration_count[0]}: mean_dist={np.mean(min_distances):.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(projected_pts)}")
 
             return min_distances
 
@@ -130,6 +142,12 @@ def _prepare_optimization(projector, camera_params, lane_points):
         (initial_params[2] - 1, initial_params[2] + 1),    # roll (PTZ 카메라: 거의 고정)
         (max(100, initial_params[3] * 0.8), initial_params[3] * 1.2),  # f (fx = fy)
     ]
+    
+    print("[auto_fitter] 파라미터 검색 범위 (Bounds):")
+    print(f"  - Yaw:   {bounds[0][0]:.2f} ~ {bounds[0][1]:.2f}")
+    print(f"  - Pitch: {bounds[1][0]:.2f} ~ {bounds[1][1]:.2f}")
+    print(f"  - Roll:  {bounds[2][0]:.2f} ~ {bounds[2][1]:.2f}")
+    print(f"  - F:     {bounds[3][0]:.1f} ~ {bounds[3][1]:.1f}")
 
     return lane_pts, initial_params, bounds
 
@@ -140,6 +158,10 @@ def _extract_result(result, method_name):
     f = optimized[3]
     print(f"[auto_fitter] {method_name} 완료: yaw={optimized[0]:.2f}, pitch={optimized[1]:.2f}, "
           f"roll={optimized[2]:.2f}, f={f:.1f}")
+    
+    # 변화량 출력 (참고용)
+    # Note: initial_params는 이 함수 스코프에 없으므로, fit 함수의 반환값이나 로그를 통해 확인해야 함.
+    # 하지만 사용성 편의를 위해 로그를 남겨두는 패턴. (상위 로직에서 초기값을 이미 찍음)
 
     return {
         'yaw': optimized[0],
@@ -159,6 +181,12 @@ def fit_powell(projector, camera_params, lane_points):
     lane_pts, initial_params, bounds = prep
     iteration_count = [0]
     cost_fn = _create_cost_function(projector, camera_params, lane_pts, iteration_count)
+
+    # 초기 비용 확인
+    dummy_count = [2]
+    temp_cost_fn = _create_cost_function(projector, camera_params, lane_pts, dummy_count)
+    initial_cost = temp_cost_fn(initial_params)
+    print(f"[auto_fitter] 초기 상태(수정 전) Cost: {initial_cost:.2f}")
 
     print("[auto_fitter] Powell 알고리즘 시작...")
     result = minimize(
@@ -182,6 +210,12 @@ def fit_nelder_mead(projector, camera_params, lane_points):
     lane_pts, initial_params, bounds = prep
     iteration_count = [0]
     cost_fn = _create_cost_function(projector, camera_params, lane_pts, iteration_count)
+
+    # 초기 비용 확인
+    dummy_count = [2]
+    temp_cost_fn = _create_cost_function(projector, camera_params, lane_pts, dummy_count)
+    initial_cost = temp_cost_fn(initial_params)
+    print(f"[auto_fitter] 초기 상태(수정 전) Cost: {initial_cost:.2f}")
 
     print("[auto_fitter] NM 알고리즘 시작...")
     result = minimize(
@@ -210,6 +244,13 @@ def fit_lm(projector, camera_params, lane_points):
     lane_pts, initial_params, bounds = prep
     iteration_count = [0]
     residual_fn = _create_residual_function(projector, camera_params, lane_pts, iteration_count)
+
+    # 초기 비용 확인
+    dummy_count = [2]
+    temp_residual_fn = _create_residual_function(projector, camera_params, lane_pts, dummy_count)
+    initial_residuals = temp_residual_fn(initial_params)
+    initial_cost = np.mean(initial_residuals)
+    print(f"[auto_fitter] 초기 상태(수정 전) Cost: {initial_cost:.2f}")
 
     # least_squares용 경계 형식 변환
     lower_bounds = [b[0] for b in bounds]
@@ -244,6 +285,12 @@ def fit_differential_evolution(projector, camera_params, lane_points):
     lane_pts, initial_params, bounds = prep
     iteration_count = [0]
     cost_fn = _create_cost_function(projector, camera_params, lane_pts, iteration_count)
+
+    # 초기 비용 확인
+    dummy_count = [2]
+    temp_cost_fn = _create_cost_function(projector, camera_params, lane_pts, dummy_count)
+    initial_cost = temp_cost_fn(initial_params)
+    print(f"[auto_fitter] 초기 상태(수정 전) Cost: {initial_cost:.2f}")
 
     print("[auto_fitter] Differential Evolution 알고리즘 시작...")
     result = differential_evolution(
