@@ -1,6 +1,6 @@
 # Auto Map Matching
 
-카메라 이미지와 지도 데이터를 매칭하여 카메라 자세를 조정하고, 특징점 기반으로 이미지 간 상대 자세를 추정하는 도구
+카메라 이미지와 지도 데이터를 매칭하여 카메라 자세를 조정하고, 특징점 기반으로 이미지 간 상대 자세를 추정하며, 차선 라벨링을 통한 자동 자세 피팅을 지원하는 도구
 
 ## 프로젝트 구조
 
@@ -12,25 +12,18 @@ auto-map-matching/
 │   ├── ui/                   # UI 관련 모듈
 │   │   ├── main_window.py   # 메인 윈도우
 │   │   ├── matcher_dialog.py     # SIFT 특징점 매칭 다이얼로그
-│   │   └── matcher_dialog_orb.py # ORB 특징점 매칭 다이얼로그
+│   │   ├── matcher_dialog_orb.py # ORB 특징점 매칭 다이얼로그
+│   │   └── lane_labeling_dialog.py # 차선 라벨링 및 정답지 생성
 │   └── core/                 # 핵심 로직
 │       ├── feature_matcher.py    # 특징점 매칭 및 자세 추정
+│       ├── auto_fitter.py        # 차선 기반 자동 자세 피팅 (Powell, NM, LM 등)
 │       └── geometry.py           # 기하학 변환 유틸리티
 ├── packages/
 │   └── vaid_gis/             # VAID GIS 패키지 (로컬)
 ├── camera/                    # 카메라 설정 폴더
-│   └── 여주시험도로_001/      # 카메라별 설정 폴더
-│       ├── base.yaml         # 기본 설정 (필수)
-│       ├── img001.yaml       # 이미지별 개별 설정 (선택)
-│       └── img002.yaml
 ├── image/                     # 이미지 폴더
-│   └── 여주시험도로_001/      # 카메라별 이미지 폴더
-│       ├── img001.jpg
-│       └── ...
+├── lane_gt/                   # 차선 라벨링 데이터 (JSON)
 └── shp/                       # Shapefile 지도 데이터
-    └── 여주시험도로_001/      # 카메라별 SHP 폴더
-        ├── *.shp
-        └── ...
 ```
 
 ## 설치
@@ -64,31 +57,31 @@ python run.py
 
 1. **카메라 선택**: 좌측 상단에서 카메라 폴더 선택
    - `camera/` 폴더 내의 `base.yaml`을 가진 폴더가 자동으로 스캔됩니다
-   - 선택 시 `base.yaml`이 로드되고 맵 데이터와 이미지 목록이 표시됩니다
-
 2. **이미지 선택**: 이미지 목록에서 원하는 이미지 클릭
-   - `image/{카메라명}/` 폴더의 이미지가 표시됩니다
-   - 해당 이미지명과 같은 YAML 파일이 있으면 자동으로 로드됩니다
-   - 없으면 `base.yaml`의 설정을 사용합니다
    - 선택한 이미지에 맵 오버레이가 자동으로 표시됩니다
+3. **자세 조정**: Position과 Orientation 슬라이더/스핀박스로 조정
+   - **Angle Normalization**: Yaw, Roll은 -180~180, Pitch는 -90~90 범위로 자동 정규화 및 UI 래핑이 적용됩니다.
+4. **저장/리셋**: Save 버튼으로 현재 이미지 설정 저장, Reset 버튼으로 초기화
 
-3. **자세 조정**: Position과 Orientation 슬라이더로 조정
-   - **Position**: X, Y, Z (카메라 위치 좌표)
-   - **Orientation**: Yaw, Pitch, Roll (카메라 회전 각도)
-   - 조정 시 실시간으로 맵 오버레이가 업데이트됩니다
+#### 2. Auto Fitting (자동 자세 피팅)
 
-4. **저장/리셋**:
-   - **Save**: 현재 이미지명으로 YAML 파일 저장 (예: `img001.yaml`)
-   - **Reset**: 현재 이미지의 YAML 파일에서 값을 다시 로드 (있으면 이미지명.yaml, 없으면 base.yaml)
+이미지에 차선 라벨링 데이터가 있는 경우, 지도의 차선과 정렬되도록 파라미터를 자동 최적화합니다.
 
-#### 2. Feature Comparison 기능
+1. **Lane Annotation**: 'Lane Annotation' 버튼을 클릭하여 현재 이미지에 대한 차선 라벨링을 수행하거나 편집합니다.
+2. **Algorithm 선택**: UI 하단의 Auto Fit 그룹에서 알고리즘 선택
+   - **Powell**: 방향 탐색 기반 최적화
+   - **NM (Nelder-Mead)**: 심플렉스 기반, 노이즈에 강함
+   - **LM (Levenberg-Marquardt)**: 비선형 최소제곱법, 빠른 수렴 (Robotics 표준)
+   - **DE (Differential Evolution)**: 진화 알고리즘 기반 글로벌 최적화 (가장 강력함)
+3. **Fit 실행**: 각 알고리즘 버튼을 클릭하면 최적화가 수행되고 결과가 즉시 반영됩니다.
+
+#### 3. Feature Comparison (특징점 매칭)
 
 이미지 목록에서 두 개의 이미지를 선택한 후 Compare 버튼을 클릭하면:
 
-- **SIFT 특징점 매칭**: SIFT 알고리즘을 사용하여 두 이미지 간 특징점을 매칭
-- **ORB 특징점 매칭**: ORB 알고리즘을 사용한 빠른 특징점 매칭
+- **SIFT/ORB 매칭**: 선택한 알고리즘으로 두 이미지 간 특징점을 매칭
 - **상대 자세 추정**: Essential Matrix를 통한 카메라 간 상대적 회전/이동 추정
-- **시각화**: 매칭된 특징점과 추정된 자세 파라미터를 시각적으로 표시
+- **자동 적용**: 추정된 자세를 두 번째 이미지에 자동으로 적용하여 맵 정렬 상태를 제안합니다.
 
 ## 카메라 YAML 파일 형식
 
@@ -126,6 +119,7 @@ resolution_height: 1080
 - `camera/여주시험도로_001/base.yaml` (필수)
 - `camera/여주시험도로_001/img001.yaml` (선택, 이미지별 설정)
 - `image/여주시험도로_001/img001.jpg`
+- `lane_gt/여주시험도로_001/img001.json` (선택, 차선 라벨링 데이터)
 - `shp/여주시험도로_001/`
 
 **이미지별 설정 파일:**
@@ -135,17 +129,21 @@ resolution_height: 1080
 
 ## 주요 기능
 
-### 맵 매칭
-- 카메라 폴더 자동 스캔 및 `base.yaml` 로드
-- 이미지별 개별 설정 지원 (이미지명.yaml)
-- 이미지 기반 맵 매칭 실시간 시각화
-- 실시간 자세 조정 및 프리뷰
-- 이미지별 조정된 파라미터 저장
+### 맵 매칭 & 자세 조정
+- 카메라 폴더 자동 스캔 및 실시간 맵 오버레이
+- Yaw/Pitch/Roll 각도 범위 자동 정규화 및 UI 스핀박스 래핑 지원
+- 이미지별 조정된 파라미터 저장 및 리셋
 
-### Feature Comparison & Pose Estimation
-- SIFT/ORB 기반 특징점 검출 및 매칭
-- Cross-check 및 Lowe's ratio test를 통한 robust 매칭
-- Essential Matrix를 통한 상대 자세 추정
-- RANSAC 기반 outlier 제거
-- 매칭 결과 및 자세 파라미터 시각화
-- 추정된 자세를 두 번째 이미지에 자동 적용
+### 자동 자세 피팅 (Auto Fitting)
+- 차선 라벨링 데이터를 활용한 다중 최적화 알고리즘 지원
+- **Powell, Nelder-Mead(NM), Levenberg-Marquardt(LM), Differential Evolution(DE)**
+- 투영된 지도 차선과 라벨링된 차선 간의 거리 최소화 방식
+
+### 특징점 기반 상대 자세 추정
+- SIFT/ORB 기반 특징점 검출 및 Robust 매칭 (Cross-check, Ratio test)
+- Essential Matrix 및 RANSAC 기반의 카메라 간 상대 자세 추구
+- 추정된 자세를 인접 이미지에 자동 적용 및 시각화
+
+### 차선 라벨링 도구
+- 이미지 상의 차선을 클릭하여 정답지(`lane_gt`) 생성 및 편집 도구 내장
+- 최적화 알고리즘의 입력 데이터로 즉시 활용 가능
