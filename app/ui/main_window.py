@@ -2,6 +2,7 @@
 맵 매칭 애플리케이션을 위한 메인 윈도우
 """
 import os
+import time
 import yaml
 from pathlib import Path
 
@@ -918,8 +919,10 @@ class MapMatcherWindow(QMainWindow):
 
         fit_func = fit_functions.get(algorithm, fit_powell)
 
+        start_time = time.time()
         try:
             result = fit_func(self.projector, self.camera_params, all_points)
+            elapsed_time = time.time() - start_time
 
             if result is None:
                 self.status_label.setText("차선 피팅 실패")
@@ -934,9 +937,12 @@ class MapMatcherWindow(QMainWindow):
 
             # 컨트롤 값 업데이트 (자동으로 _draw_image_with_overlay 호출됨)
             self._populate_controls_from_params()
+            
+            # 수행 시간 출력
+            print(f"[{algorithm_names.get(algorithm, algorithm)}] 피팅 수행 시간: {elapsed_time:.4f}초")
 
             self.status_label.setText(
-                f"[{algorithm_names.get(algorithm, algorithm)}] 완료 - "
+                f"[{algorithm_names.get(algorithm, algorithm)}] 완료 ({elapsed_time:.3f}초) - "
                 f"yaw: {self.camera_params.yaw:.2f}, pitch: {self.camera_params.pitch:.2f}, "
                 f"roll: {self.camera_params.roll:.2f}, fx: {result['fx']:.1f}, fy: {result['fy']:.1f}"
             )

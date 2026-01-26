@@ -5,6 +5,7 @@ import copy
 import numpy as np
 from scipy.optimize import minimize, least_squares, differential_evolution
 from scipy.spatial.distance import cdist
+from scipy.spatial import cKDTree
 
 
 def densify_polyline(points, density=2.0):
@@ -104,8 +105,9 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
                      print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e10 (필터링됨: 모든 점이 화면 밖), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return 1e10
 
-            distances = cdist(lane_pts, filtered_pts, metric='euclidean')
-            min_distances = np.min(distances, axis=1)
+            # KD-Tree를 사용한 최적화된 거리 계산 (O(n log m))
+            tree = cKDTree(filtered_pts)
+            min_distances, _ = tree.query(lane_pts, k=1)
             cost = np.mean(min_distances)
 
             if iteration_count[0] % 20 == 1:
@@ -182,8 +184,9 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
                      print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e5 (필터링됨: 모든 점이 화면 밖), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
                 return np.full(len(lane_pts), 1e5)
 
-            distances = cdist(lane_pts, filtered_pts, metric='euclidean')
-            min_distances = np.min(distances, axis=1)
+            # KD-Tree를 사용한 최적화된 거리 계산 (O(n log m))
+            tree = cKDTree(filtered_pts)
+            min_distances, _ = tree.query(lane_pts, k=1)
 
             if iteration_count[0] % 20 == 1:
                 print(f"[auto_fitter] iter {iteration_count[0]}: mean_dist={np.mean(min_distances):.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(filtered_pts)}(raw:{len(projected_pts)})")
@@ -380,7 +383,7 @@ def fit_differential_evolution(projector, camera_params, lane_points):
         popsize=15,          # 개체군 크기 (파라미터 수 × 3-4)
         atol=0.05,           # 절대 허용 오차
         tol=0.05,            # 상대 허용 오차
-        workers=1,           # 단일 스레드 (안정성)
+        workers=1,           # 단일 스레드 (pickle 문제로 병렬 처리 비활성화, KD-Tree로 최적화됨)
         updating='deferred', # 비동기 업데이트 (수렴 속도 향상)
         strategy='best1bin', # 기본 전략 (균형잡힌 성능)
         mutation=(0.5, 1.5), # 변이 상수 범위
