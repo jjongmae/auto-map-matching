@@ -60,7 +60,7 @@ python run.py
 2. **이미지 선택**: 이미지 목록에서 원하는 이미지 클릭
    - 선택한 이미지에 맵 오버레이가 자동으로 표시됩니다
 3. **자세 조정**: Position과 Orientation 슬라이더/스핀박스로 조정
-   - **Angle Normalization**: Yaw, Roll은 -180~180, Pitch는 -90~90 범위로 자동 정규화 및 UI 래핑이 적용됩니다.
+   - **Angle Normalization**: Yaw, Roll은 -180에서 180, Pitch는 -90에서 90 범위로 자동 정규화 및 UI 래핑이 적용됩니다.
 4. **저장/리셋**: Save 버튼으로 현재 이미지 설정 저장, Reset 버튼으로 초기화
 
 #### 2. Auto Fitting (자동 자세 피팅)
