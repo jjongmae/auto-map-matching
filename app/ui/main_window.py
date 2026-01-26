@@ -36,6 +36,7 @@ class MapMatcherWindow(QMainWindow):
         self.projector = None
         self.projected_map_data = None
         self.camera_params = CameraParams()
+        
 
         # --- UI 설정 ---
         central_widget = QWidget()
@@ -405,6 +406,7 @@ class MapMatcherWindow(QMainWindow):
             return
 
         self.current_image_path = str(image_path)
+        
 
         # 가장 잘 일치하는 yaml 파일 찾기 시도
         yaml_to_use = None
@@ -540,10 +542,13 @@ class MapMatcherWindow(QMainWindow):
 
         # 투영 오버레이 그리기 (체크박스가 선택된 경우에만)
         if self.show_map_lines and self.projected_map_data:
-            # b2 (선)를 청록색으로 그리기
+            # b2 (선)를 파란색으로 그리기 (선 + 점)
             if self.projected_map_data.get('b2'):
-                cv2.polylines(image, self.projected_map_data['b2'],
-                            isClosed=False, color=(255, 255, 0), thickness=3)
+                for line in self.projected_map_data['b2']:
+                    if len(line) > 0:
+                        # 선 그리기
+                        line_arr = np.array(line, dtype=np.int32)
+                        cv2.polylines(image, [line_arr], isClosed=False, color=(255, 0, 0), thickness=2)
 
         # Qt로 변환 및 표시
         h, w, ch = image.shape
@@ -844,6 +849,61 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText("라벨링 점이 부족합니다 (최소 2개 필요)")
             return
 
+        
+        # --- 로그 기록 시작 ---
+        print("\n" + "="*50)
+        print("[라인 피팅 시작 로그]")
+        
+        # 1. 라벨링 데이터 (그룹 점)
+        print(f"\n1. 라벨링 데이터 (총 {len(lanes)}개 그룹)")
+        for i, lane in enumerate(lanes):
+            pts = lane.get('points', [])
+            print(f"   - 그룹 {i} (점 {len(pts)}개): {pts}")
+
+        # 2. 투영된 지도 데이터 (그룹 점)
+        print("\n2. 투영된 지도 데이터 (초기 상태 - 화면 내 유효 점만 표시)")
+        
+        # 로그용 초기 투영 데이터 계산
+        initial_b2_lines = []
+        try:
+            proj_result = self.projector.projection_float(self.camera_params, target_layers=['b2'])
+            initial_b2_lines = proj_result.get('b2', []) if isinstance(proj_result, dict) else getattr(proj_result, 'projected_layers', {}).get('b2', [])
+        except Exception:
+            pass
+            
+        # 해상도 기준 설정 (1920x1080)
+        res_w = getattr(self.camera_params, 'resolution_width', 0) or 1920
+        res_h = getattr(self.camera_params, 'resolution_height', 0) or 1080
+        
+        print(f"   - 해상도 기준: {res_w} x {res_h} (마진 0px)")
+        print(f"   - 원본 투영 라인 그룹 수: {len(initial_b2_lines)}")
+        
+        valid_total_count = 0
+        
+        for i, line in enumerate(initial_b2_lines):
+            if len(line) == 0:
+                continue
+                
+            pts_arr = np.array(line, dtype=np.float64)
+            
+            # 필터링 로직
+            mask = (
+                (pts_arr[:, 0] >= 0) & (pts_arr[:, 0] <= res_w) &
+                (pts_arr[:, 1] >= 0) & (pts_arr[:, 1] <= res_h)
+            )
+            valid_pts = pts_arr[mask]
+            
+            valid_total_count += len(valid_pts)
+            
+            if len(valid_pts) > 0:
+                print(f"   - 그룹 {i} (유효 {len(valid_pts)}/{len(line)}개): {valid_pts.tolist()}")
+            else:
+                print(f"   - 그룹 {i} (유효 0/{len(line)}개): [모두 화면 밖 - 제외됨]")
+
+        print(f"   => 총 최적화 사용 예정 점 개수: {valid_total_count}")
+        print("="*50 + "\n")
+        # --- 로그 기록 종료 ---
+
         self.status_label.setText(f"차선 피팅 중... ({algorithm_names.get(algorithm, algorithm)})")
 
         # 알고리즘별 함수 선택
@@ -865,14 +925,14 @@ class MapMatcherWindow(QMainWindow):
                 self.status_label.setText("차선 피팅 실패")
                 return
 
-            # 최적화된 파라미터로 UI 업데이트 (각도 범위에 맞게 정규화)
+            # 최적화된 파라미터로 UI 업데이트
             self.camera_params.yaw = self._normalize_angle(result['yaw'])
             self.camera_params.pitch = self._normalize_pitch(result['pitch'])
             self.camera_params.roll = self._normalize_angle(result['roll'])
             self.camera_params.fx = result['fx']
             self.camera_params.fy = result['fy']
 
-            # 컨트롤 값 업데이트
+            # 컨트롤 값 업데이트 (자동으로 _draw_image_with_overlay 호출됨)
             self._populate_controls_from_params()
 
             self.status_label.setText(
@@ -880,6 +940,11 @@ class MapMatcherWindow(QMainWindow):
                 f"yaw: {self.camera_params.yaw:.2f}, pitch: {self.camera_params.pitch:.2f}, "
                 f"roll: {self.camera_params.roll:.2f}, fx: {result['fx']:.1f}, fy: {result['fy']:.1f}"
             )
+
+        except Exception as e:
+            self.status_label.setText(f"차선 피팅 오류: {e}")
+            import traceback
+            traceback.print_exc()
 
         except Exception as e:
             self.status_label.setText(f"차선 피팅 오류: {e}")

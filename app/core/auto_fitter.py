@@ -7,6 +7,41 @@ from scipy.optimize import minimize, least_squares, differential_evolution
 from scipy.spatial.distance import cdist
 
 
+def densify_polyline(points, density=2.0):
+    """폴리라인의 점들을 지정된 밀도(픽셀 단위)로 촘촘하게 채움"""
+    if len(points) < 2:
+        return points
+    
+    points = np.array(points)
+    densified = []
+    
+    for i in range(len(points) - 1):
+        p1 = points[i]
+        p2 = points[i+1]
+        
+        dist = np.linalg.norm(p2 - p1)
+        if dist < 1e-6:
+             densified.append(p1)
+             continue
+             
+        num_intervals = int(np.ceil(dist / density))
+        if num_intervals < 1:
+            num_intervals = 1
+            
+        # 점의 개수 = 구간 개수 + 1
+        num_points = num_intervals + 1
+        
+        # 마지막 세그먼트인 경우 끝점 포함
+        if i == len(points) - 2:
+            segment_pts = np.linspace(p1, p2, num_points)
+        else:
+            segment_pts = np.linspace(p1, p2, num_points, endpoint=False)
+            
+        densified.extend(segment_pts)
+        
+    return densified
+
+
 def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
     """비용 함수 생성 (평균 거리 반환)"""
     opt_params = copy.deepcopy(camera_params)
@@ -38,7 +73,9 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
 
             projected_pts = []
             for line in b2_lines:
-                for pt in line:
+                # 밀도 보강 (정밀도 향상)
+                dense_line = densify_polyline(line, density=2.0)
+                for pt in dense_line:
                     projected_pts.append(pt)
 
             if not projected_pts:
@@ -47,12 +84,32 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
                 return 1e10
 
             projected_pts = np.array(projected_pts, dtype=np.float64)
-            distances = cdist(lane_pts, projected_pts, metric='euclidean')
+
+            # 화면 밖의 점 필터링 (마진 없음: 0px)
+            # 해상도 기본값 1920x1080 사용 (사용자 요청)
+            w = getattr(opt_params, 'resolution_width', 0) or 1920
+            h = getattr(opt_params, 'resolution_height', 0) or 1080
+            margin = 0
+
+            mask = (
+                (projected_pts[:, 0] >= -margin) & 
+                (projected_pts[:, 0] <= w + margin) & 
+                (projected_pts[:, 1] >= -margin) & 
+                (projected_pts[:, 1] <= h + margin)
+            )
+            filtered_pts = projected_pts[mask]
+
+            if len(filtered_pts) == 0:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e10 (필터링됨: 모든 점이 화면 밖), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
+                return 1e10
+
+            distances = cdist(lane_pts, filtered_pts, metric='euclidean')
             min_distances = np.min(distances, axis=1)
             cost = np.mean(min_distances)
 
             if iteration_count[0] % 20 == 1:
-                print(f"[auto_fitter] iter {iteration_count[0]}: cost={cost:.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(projected_pts)}")
+                print(f"[auto_fitter] iter {iteration_count[0]}: cost={cost:.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(filtered_pts)}(raw:{len(projected_pts)})")
 
             return cost
 
@@ -94,7 +151,9 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
 
             projected_pts = []
             for line in b2_lines:
-                for pt in line:
+                # 밀도 보강 (정밀도 향상)
+                dense_line = densify_polyline(line, density=2.0)
+                for pt in dense_line:
                     projected_pts.append(pt)
 
             if not projected_pts:
@@ -103,11 +162,31 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
                 return np.full(len(lane_pts), 1e5)
 
             projected_pts = np.array(projected_pts, dtype=np.float64)
-            distances = cdist(lane_pts, projected_pts, metric='euclidean')
+
+            # 화면 밖의 점 필터링 (마진 없음: 0px)
+            # 해상도 기본값 1920x1080 사용 (사용자 요청)
+            w = getattr(opt_params, 'resolution_width', 0) or 1920
+            h = getattr(opt_params, 'resolution_height', 0) or 1080
+            margin = 0
+
+            mask = (
+                (projected_pts[:, 0] >= -margin) & 
+                (projected_pts[:, 0] <= w + margin) & 
+                (projected_pts[:, 1] >= -margin) & 
+                (projected_pts[:, 1] <= h + margin)
+            )
+            filtered_pts = projected_pts[mask]
+
+            if len(filtered_pts) == 0:
+                if iteration_count[0] % 20 == 1:
+                     print(f"[auto_fitter] iter {iteration_count[0]}: cost=1e5 (필터링됨: 모든 점이 화면 밖), params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f})")
+                return np.full(len(lane_pts), 1e5)
+
+            distances = cdist(lane_pts, filtered_pts, metric='euclidean')
             min_distances = np.min(distances, axis=1)
 
             if iteration_count[0] % 20 == 1:
-                print(f"[auto_fitter] iter {iteration_count[0]}: mean_dist={np.mean(min_distances):.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(projected_pts)}")
+                print(f"[auto_fitter] iter {iteration_count[0]}: mean_dist={np.mean(min_distances):.2f}, params=(y:{yaw:.2f}, p:{pitch:.2f}, r:{roll:.2f}, f:{f:.1f}), n_pts={len(filtered_pts)}(raw:{len(projected_pts)})")
 
             return min_distances
 
