@@ -663,6 +663,9 @@ class MapMatcherWindow(QMainWindow):
         self.btn_lane_annotation = QPushButton("차선 라벨링\n(수동)")
         self.btn_lane_annotation.clicked.connect(self._on_lane_annotation_clicked)
 
+        self.btn_lane_detection_sam3 = QPushButton("차선 검출\n(SAM3)")
+        self.btn_lane_detection_sam3.clicked.connect(self._on_lane_detection_sam3_clicked)
+
         self.btn_lane_fit_powell = QPushButton("차선 피팅\n(Powell)")
         self.btn_lane_fit_powell.clicked.connect(lambda: self._on_lane_fit_clicked('powell'))
 
@@ -679,6 +682,7 @@ class MapMatcherWindow(QMainWindow):
         layout.addWidget(self.btn_compare_features_orb)
 
         layout.addWidget(self.btn_lane_annotation)
+        layout.addWidget(self.btn_lane_detection_sam3)
         layout.addWidget(self.btn_lane_fit_powell)
         layout.addWidget(self.btn_lane_fit_nm)
         layout.addWidget(self.btn_lane_fit_lm)
@@ -771,6 +775,22 @@ class MapMatcherWindow(QMainWindow):
             dialog.exec()
         except Exception as e:
             self.status_label.setText(f"차선 라벨링 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_lane_detection_sam3_clicked(self):
+        """SAM3를 사용한 차선 검출 대화상자 열기"""
+        if not self.current_image_path:
+            self.status_label.setText("이미지를 먼저 선택하세요")
+            return
+
+        from app.ui.lane_detection_sam3_dialog import LaneDetectionSAM3Dialog
+
+        try:
+            dialog = LaneDetectionSAM3Dialog(self.current_image_path, self)
+            dialog.exec()
+        except Exception as e:
+            self.status_label.setText(f"SAM3 차선 검출 오류: {e}")
             import traceback
             traceback.print_exc()
 

@@ -17,3 +17,6 @@ torch
 torchvision
 transformers
 pillow
+
+# SAM3 지원 (8.3.237 이상 필요)
+ultralytics>=8.3.237
