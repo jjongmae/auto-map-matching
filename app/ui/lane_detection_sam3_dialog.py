@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QMessageBox, QScrollArea, QWidget,
-    QProgressDialog, QComboBox, QSpinBox, QGroupBox, QLineEdit
+    QProgressDialog, QComboBox, QSpinBox, QGroupBox, QLineEdit, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QImage, QPainter
@@ -59,24 +59,26 @@ class DetectionWorker(QThread):
     finished = Signal(list)  # 검출된 차선 리스트
     error = Signal(str)      # 에러 메시지
 
-    def __init__(self, image_path, model_path, text_prompts, device):
+    def __init__(self, image_path, text_prompts, conf=0.5, poly_degree=2):
         super().__init__()
         self.image_path = image_path
-        self.model_path = model_path
         self.text_prompts = text_prompts
-        self.device = device
+        self.conf = conf
+        self.poly_degree = poly_degree
 
     def run(self):
         try:
             from app.core.lane_detector_sam3 import LaneDetectorSAM3
 
             detector = LaneDetectorSAM3(
-                model_path=self.model_path,
-                device=self.device
+                model_path="models/sam3.pt",
+                device="cuda",
+                conf=self.conf
             )
             lanes = detector.detect_lanes(
                 self.image_path,
-                text_prompts=self.text_prompts
+                text_prompts=self.text_prompts,
+                poly_degree=self.poly_degree
             )
             self.finished.emit(lanes)
         except Exception as e:
@@ -127,27 +129,35 @@ class LaneDetectionSAM3Dialog(QDialog):
         settings_group = QGroupBox("검출 설정")
         settings_layout = QHBoxLayout()
 
-        settings_layout.addWidget(QLabel("모델:"))
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(["models/sam3.pt"])
-        self.model_combo.setEditable(True)
-        settings_layout.addWidget(self.model_combo)
-
-        settings_layout.addWidget(QLabel("디바이스:"))
-        self.device_combo = QComboBox()
-        self.device_combo.addItems(["cuda", "cpu"])
-        settings_layout.addWidget(self.device_combo)
-
         settings_layout.addWidget(QLabel("프롬프트:"))
         self.prompt_edit = QLineEdit("lane line")
         self.prompt_edit.setMinimumWidth(200)
         settings_layout.addWidget(self.prompt_edit)
 
+        settings_layout.addWidget(QLabel("신뢰도:"))
+        self.conf_spinbox = QDoubleSpinBox()
+        self.conf_spinbox.setRange(0.1, 1.0)
+        self.conf_spinbox.setSingleStep(0.05)
+        self.conf_spinbox.setValue(0.5)
+        self.conf_spinbox.setDecimals(2)
+        self.conf_spinbox.setMinimumWidth(80)
+        settings_layout.addWidget(self.conf_spinbox)
+
+        settings_layout.addWidget(QLabel("라인 보정:"))
+        self.smoothing_combo = QComboBox()
+        self.smoothing_combo.addItem("안함", 0)
+        self.smoothing_combo.addItem("직선으로", 1)
+        self.smoothing_combo.addItem("부드러운 곡선", 2)
+        self.smoothing_combo.addItem("복잡한 곡선", 3)
+        self.smoothing_combo.setCurrentIndex(2)  # 기본값: 부드러운 곡선
+        self.smoothing_combo.setMinimumWidth(120)
+        settings_layout.addWidget(self.smoothing_combo)
+
         settings_layout.addStretch()
 
         self.btn_detect = QPushButton("검출 시작")
         self.btn_detect.clicked.connect(self._start_detection)
-        self.btn_detect.setStyleSheet("font-weight: bold; padding: 8px 16px;")
+        self.btn_detect.setStyleSheet("padding: 8px 16px;")
         settings_layout.addWidget(self.btn_detect)
 
         settings_group.setLayout(settings_layout)
@@ -196,11 +206,12 @@ class LaneDetectionSAM3Dialog(QDialog):
         self.btn_save = QPushButton("저장")
         self.btn_save.clicked.connect(self._save_lanes)
         self.btn_save.setEnabled(False)
-        self.btn_save.setStyleSheet("font-weight: bold; padding: 8px 16px;")
+        self.btn_save.setStyleSheet("padding: 8px 16px;")
         button_layout.addWidget(self.btn_save)
 
         btn_close = QPushButton("닫기")
         btn_close.clicked.connect(self.reject)
+        btn_close.setStyleSheet("padding: 8px 16px;")
         button_layout.addWidget(btn_close)
 
         layout.addLayout(button_layout)
@@ -225,12 +236,12 @@ class LaneDetectionSAM3Dialog(QDialog):
         self.btn_save.setEnabled(False)
         self.info_label.setText("SAM3 모델 로딩 및 차선 검출 중...")
 
-        model_path = self.model_combo.currentText()
-        device = self.device_combo.currentText()
         prompts = [p.strip() for p in self.prompt_edit.text().split(",")]
+        conf = self.conf_spinbox.value()
+        poly_degree = self.smoothing_combo.currentData()
 
         self.worker = DetectionWorker(
-            self.image_path, model_path, prompts, device
+            self.image_path, prompts, conf, poly_degree
         )
         self.worker.finished.connect(self._on_detection_finished)
         self.worker.error.connect(self._on_detection_error)

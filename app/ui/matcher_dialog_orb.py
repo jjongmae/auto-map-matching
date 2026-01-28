@@ -6,25 +6,28 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QGroupBox, QScrollArea
+    QLabel, QPushButton, QGroupBox, QScrollArea, QWidget
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage
 import cv2
 import numpy as np
 
+from vaid_gis import CameraParams
+
 from app.core.geometry import euler_to_R_cam, R_cam_to_euler
 from app.core.feature_matcher import compute_orb_matches, estimate_relative_pose, visualize_matches
 
 
 class MatcherDialogORB(QDialog):
-    def __init__(self, img_path1, img_path2, parent=None):
+    def __init__(self, img_path1, img_path2, parent=None, projector=None):
         super().__init__(parent)
         self.setWindowTitle("Feature Matching (ORB) & Pose Estimation")
         self.resize(1600, 900)
 
         self.img_path1 = img_path1
         self.img_path2 = img_path2
+        self.projector = projector  # 지도 투영용
 
         # 데이터 플레이스홀더
         self.params_A = None
@@ -35,13 +38,36 @@ class MatcherDialogORB(QDialog):
         # --- 레이아웃 ---
         main_layout = QVBoxLayout(self)
 
-        # 1. 상단: 이미지 표시 (나란히)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        self.lbl_result = QLabel("Computing matches...")
-        self.lbl_result.setAlignment(Qt.AlignCenter)
-        scroll.setWidget(self.lbl_result)
-        main_layout.addWidget(scroll, 7)
+        # 1. 상단: 투영 지도 비교 (좌: 기존 파라미터, 우: 계산된 파라미터)
+        projection_layout = QHBoxLayout()
+
+        # 왼쪽: 기존 파라미터로 투영된 지도
+        left_container = QVBoxLayout()
+        self.lbl_left_title = QLabel("기존 파라미터 (A)")
+        self.lbl_left_title.setAlignment(Qt.AlignCenter)
+        self.lbl_left_title.setStyleSheet("font-weight: bold; font-size: 14px;")
+        left_container.addWidget(self.lbl_left_title)
+
+        self.lbl_left_image = QLabel("이미지 로딩 중...")
+        self.lbl_left_image.setAlignment(Qt.AlignCenter)
+        self.lbl_left_image.setMinimumSize(880, 495)
+        left_container.addWidget(self.lbl_left_image)
+        projection_layout.addLayout(left_container)
+
+        # 오른쪽: 계산된 파라미터로 투영된 지도
+        right_container = QVBoxLayout()
+        self.lbl_right_title = QLabel("계산된 파라미터 (B)")
+        self.lbl_right_title.setAlignment(Qt.AlignCenter)
+        self.lbl_right_title.setStyleSheet("font-weight: bold; font-size: 14px; color: blue;")
+        right_container.addWidget(self.lbl_right_title)
+
+        self.lbl_right_image = QLabel("계산 대기 중...")
+        self.lbl_right_image.setAlignment(Qt.AlignCenter)
+        self.lbl_right_image.setMinimumSize(880, 495)
+        right_container.addWidget(self.lbl_right_image)
+        projection_layout.addLayout(right_container)
+
+        main_layout.addLayout(projection_layout, 7)
 
         # 2. 하단: 파라미터 제어
         self.controls_layout = QHBoxLayout()
@@ -177,14 +203,16 @@ class MatcherDialogORB(QDialog):
         img2 = cv2.imread(self.img_path2)
 
         if img1 is None or img2 is None:
-            self.lbl_result.setText("이미지 로드 실패")
+            self.lbl_left_image.setText("이미지 로드 실패")
+            self.lbl_right_image.setText("이미지 로드 실패")
             return
 
         # 교차 검사를 통한 ORB 매칭 계산
         kp1, kp2, good_matches = compute_orb_matches(img1, img2, ratio_thresh=0.75)
 
         if len(good_matches) == 0:
-            self.lbl_result.setText("특징점을 찾을 수 없습니다.")
+            self.lbl_left_image.setText("특징점을 찾을 수 없습니다.")
+            self.lbl_right_image.setText("특징점을 찾을 수 없습니다.")
             return
 
         # --- 포즈 추정 로직 ---
@@ -227,18 +255,92 @@ class MatcherDialogORB(QDialog):
                 self.lbls_B["Pitch"].setText(f"{pitch_b:.3f}")
                 self.lbls_B["Roll"].setText(f"{roll_b:.3f}")
             else:
-                self.lbl_result.setText("Essential Matrix 계산 실패")
+                self.lbl_left_image.setText("Essential Matrix 계산 실패")
+                self.lbl_right_image.setText("Essential Matrix 계산 실패")
                 return
         else:
-            self.lbl_result.setText("매칭점이 부족합니다 (< 5).")
+            self.lbl_left_image.setText("매칭점이 부족합니다 (< 5).")
+            self.lbl_right_image.setText("매칭점이 부족합니다 (< 5).")
             inliers = good_matches  # 포즈 추정이 없는 경우 모든 매칭 사용
 
-        # --- 시각화 ---
-        vis = visualize_matches(img1, img2, kp1, kp2, inliers, target_width=800)
+        # --- 투영 지도 시각화 ---
+        self._show_projected_maps(img1, img2, kp1, kp2, inliers)
 
-        # 표시
-        h, w, ch = vis.shape
+    def _show_projected_maps(self, img1, img2, kp1, kp2, inliers):
+        """왼쪽에 기존 파라미터, 오른쪽에 계산된 파라미터로 투영된 지도 표시"""
+        target_width = 880
+
+        # inlier 특징점 좌표와 색상 추출
+        pts1 = []
+        pts2 = []
+        colors = []
+        np.random.seed(42)  # 재현성을 위한 시드
+        for m in inliers:
+            pts1.append(kp1[m.queryIdx].pt)
+            pts2.append(kp2[m.trainIdx].pt)
+            # 각 매칭 쌍마다 랜덤 색상 생성
+            color = tuple(map(int, np.random.randint(0, 255, 3)))
+            colors.append(color)
+
+        # 왼쪽: 기존 파라미터 (A)로 투영 + 특징점
+        left_img = self._draw_projection_overlay(img1, self.params_A, target_width, pts1, colors)
+        self._display_image(self.lbl_left_image, left_img)
+
+        # 오른쪽: 계산된 파라미터 (B)로 투영 + 특징점
+        if self.params_B is not None:
+            right_img = self._draw_projection_overlay(img2, self.params_B, target_width, pts2, colors)
+            self._display_image(self.lbl_right_image, right_img)
+        else:
+            # params_B가 없으면 원본 이미지 + 특징점만 표시
+            right_img = self._draw_projection_overlay(img2, None, target_width, pts2, colors)
+            self._display_image(self.lbl_right_image, right_img)
+
+    def _draw_projection_overlay(self, image, params_dict, target_width, keypoints=None, colors=None):
+        """이미지 위에 투영된 지도 선과 특징점 그리기"""
+        # 이미지 복사
+        result = image.copy()
+
+        # projector가 있고 params가 있는 경우에만 투영
+        if self.projector is not None and params_dict is not None:
+            try:
+                # 딕셔너리에서 CameraParams 생성
+                camera_params = CameraParams(**params_dict)
+
+                # 지도 투영
+                projected_data = self.projector.projection(camera_params).projected_layers
+
+                # b2 레이어 (차선) 그리기
+                if projected_data and projected_data.get('b2'):
+                    for line in projected_data['b2']:
+                        if len(line) > 0:
+                            line_arr = np.array(line, dtype=np.int32)
+                            cv2.polylines(result, [line_arr], isClosed=False, color=(255, 0, 0), thickness=2)
+            except Exception as e:
+                print(f"[MatcherDialogORB] 투영 오류: {e}")
+
+        # 특징점 그리기
+        if keypoints:
+            for i, pt in enumerate(keypoints):
+                x, y = int(pt[0]), int(pt[1])
+                color = colors[i] if colors and i < len(colors) else (0, 255, 0)
+                cv2.circle(result, (x, y), 10, (255, 255, 255), 2)  # 흰색 외곽
+                cv2.circle(result, (x, y), 8, (0, 0, 0), 2)         # 검은 테두리
+                cv2.circle(result, (x, y), 6, color, -1)            # 색상 원
+
+        # 리사이즈
+        return self._resize_image(result, target_width)
+
+    def _resize_image(self, image, target_width):
+        """이미지를 지정된 너비로 리사이즈"""
+        h, w = image.shape[:2]
+        scale = target_width / w
+        new_h = int(h * scale)
+        return cv2.resize(image, (target_width, new_h))
+
+    def _display_image(self, label, image):
+        """QLabel에 OpenCV 이미지 표시"""
+        h, w, ch = image.shape
         bytes_per_line = ch * w
-        qt_image = QImage(vis.data, w, h, bytes_per_line, QImage.Format_BGR888)
+        qt_image = QImage(image.data, w, h, bytes_per_line, QImage.Format_BGR888)
         pixmap = QPixmap.fromImage(qt_image)
-        self.lbl_result.setPixmap(pixmap)
+        label.setPixmap(pixmap)

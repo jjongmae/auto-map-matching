@@ -722,7 +722,7 @@ class MapMatcherWindow(QMainWindow):
             return
 
         try:
-            dialog = MatcherDialog(files[0], files[1], self)
+            dialog = MatcherDialog(files[0], files[1], self, projector=self.projector)
             dialog.exec()
         except Exception as e:
             self.status_label.setText(f"매칭 오류: {e}")
@@ -755,7 +755,7 @@ class MapMatcherWindow(QMainWindow):
             return
 
         try:
-            dialog = MatcherDialogORB(files[0], files[1], self)
+            dialog = MatcherDialogORB(files[0], files[1], self, projector=self.projector)
             dialog.exec()
         except Exception as e:
             self.status_label.setText(f"ORB 매칭 오류: {e}")
