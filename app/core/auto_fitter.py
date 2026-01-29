@@ -59,7 +59,7 @@ def _create_cost_function(projector, camera_params, lane_pts, iteration_count):
 
         try:
             # 실수형 좌표 투영 사용 (최적화용)
-            projected_layers = projector.projection_float(opt_params, target_layers=['b2'])
+            projected_layers = projector.projection(opt_params, target_layers=['b2'], as_float=True, include_cache=False)
 
             if not projected_layers or 'b2' not in projected_layers:
                 if iteration_count[0] % 20 == 1:
@@ -138,7 +138,7 @@ def _create_residual_function(projector, camera_params, lane_pts, iteration_coun
 
         try:
             # 실수형 좌표 투영 사용 (최적화용)
-            projected_layers = projector.projection_float(opt_params, target_layers=['b2'])
+            projected_layers = projector.projection(opt_params, target_layers=['b2'], as_float=True, include_cache=False)
 
             if not projected_layers or 'b2' not in projected_layers:
                 if iteration_count[0] % 20 == 1:

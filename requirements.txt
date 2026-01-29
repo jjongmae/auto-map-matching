@@ -3,13 +3,9 @@ PySide6
 PyYAML
 opencv-python
 
-# VAID GIS (local package)
-# Install with: pip install -e packages/vaid_gis
-# Dependencies for vaid_gis:
-numpy
-geopandas
-shapely
-scipy
+# u1gis-geovision (git submodule)
+# 먼저 submodule 초기화 필요: git submodule update --init
+-e packages/u1gis_geovision
 
 # Deep Learning / Segmentation
 # Use --index-url https://download.pytorch.org/whl/cu118 (or appropriate CUDA version) if needed manually

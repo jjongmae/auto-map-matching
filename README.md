@@ -19,7 +19,7 @@ auto-map-matching/
 │       ├── auto_fitter.py        # 차선 기반 자동 자세 피팅 (Powell, NM, LM 등)
 │       └── geometry.py           # 기하학 변환 유틸리티
 ├── packages/
-│   └── vaid_gis/             # VAID GIS 패키지 (로컬)
+│   └── u1gis_geovision/      # GIS 투영 패키지 (git submodule)
 ├── camera/                    # 카메라 설정 폴더
 ├── image/                     # 이미지 폴더
 ├── lane_gt/                   # 차선 라벨링 데이터 (JSON)
@@ -28,7 +28,19 @@ auto-map-matching/
 
 ## 설치
 
-### 1. 가상환경 생성 및 활성화
+### 1. 저장소 클론 (submodule 포함)
+
+```bash
+git clone --recursive https://github.com/jjongmae/auto-map-matching.git
+cd auto-map-matching
+```
+
+이미 클론한 경우 submodule 초기화:
+```bash
+git submodule update --init
+```
+
+### 2. 가상환경 생성 및 활성화
 
 ```bash
 python -m venv .venv
@@ -36,11 +48,10 @@ source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate   # Windows
 ```
 
-### 2. 의존성 설치
+### 3. 의존성 설치
 
 ```bash
 pip install -r requirements.txt
-pip install -e packages/vaid_gis
 ```
 
 ## 사용 방법

@@ -1,0 +1,3 @@
+[submodule "packages/u1gis_geovision"]
+	path = packages/u1gis_geovision
+	url = https://github.com/jjongmae/u1gis-geovision.git

@@ -16,7 +16,7 @@ from PySide6.QtGui import QPixmap, QImage
 import cv2
 import numpy as np
 
-from vaid_gis import MapProjector, CameraParams
+from u1gis_geovision import MapProjector, CameraParams
 
 
 class MapMatcherWindow(QMainWindow):
@@ -887,7 +887,7 @@ class MapMatcherWindow(QMainWindow):
         # 로그용 초기 투영 데이터 계산
         initial_b2_lines = []
         try:
-            proj_result = self.projector.projection_float(self.camera_params, target_layers=['b2'])
+            proj_result = self.projector.projection(self.camera_params, target_layers=['b2'], as_float=True, include_cache=False)
             initial_b2_lines = proj_result.get('b2', []) if isinstance(proj_result, dict) else getattr(proj_result, 'projected_layers', {}).get('b2', [])
         except Exception:
             pass

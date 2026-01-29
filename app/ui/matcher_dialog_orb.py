@@ -13,7 +13,7 @@ from PySide6.QtGui import QPixmap, QImage
 import cv2
 import numpy as np
 
-from vaid_gis import CameraParams
+from u1gis_geovision import CameraParams
 
 from app.core.geometry import euler_to_R_cam, R_cam_to_euler
 from app.core.feature_matcher import compute_orb_matches, estimate_relative_pose, visualize_matches
