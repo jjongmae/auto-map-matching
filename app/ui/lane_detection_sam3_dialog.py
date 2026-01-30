@@ -99,14 +99,19 @@ class LaneDetectionSAM3Dialog(QDialog):
 
     def __init__(self, image_path, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("차선 검출 (SAM3)")
-        self.resize(1400, 900)
+        self.setWindowTitle("차선 검출 (SAM3) - Debug View")
+        self.resize(1800, 900)
 
         self.image_path = image_path
         self.original_image = None
         self.original_size = None
         self.detected_lanes = []
         self.worker = None
+
+        self.image_widget_left = None
+        self.image_widget_right = None
+        self.scroll_area_left = None
+        self.scroll_area_right = None
 
         self._setup_ui()
         self._load_image()
@@ -163,15 +168,41 @@ class LaneDetectionSAM3Dialog(QDialog):
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
-        # 이미지 표시 영역
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(False)
-        self.scroll_area.setAlignment(Qt.AlignCenter)
+        # 이미지 표시 영역 (좌우 분할)
+        image_layout = QHBoxLayout()
 
-        self.image_widget = ZoomableImageWidget()
-        self.scroll_area.setWidget(self.image_widget)
+        # 왼쪽: SAM3 Raw Mask
+        left_group = QGroupBox("SAM3 Raw Segment (Mask)")
+        left_layout = QVBoxLayout()
+        self.scroll_area_left = QScrollArea()
+        self.scroll_area_left.setWidgetResizable(False)
+        self.scroll_area_left.setAlignment(Qt.AlignCenter)
+        self.image_widget_left = ZoomableImageWidget()
+        self.scroll_area_left.setWidget(self.image_widget_left)
+        left_layout.addWidget(self.scroll_area_left)
+        left_group.setLayout(left_layout)
 
-        layout.addWidget(self.scroll_area, stretch=1)
+        # 오른쪽: Post-processed Result
+        right_group = QGroupBox("Post-processed Result (Polyline)")
+        right_layout = QVBoxLayout()
+        self.scroll_area_right = QScrollArea()
+        self.scroll_area_right.setWidgetResizable(False)
+        self.scroll_area_right.setAlignment(Qt.AlignCenter)
+        self.image_widget_right = ZoomableImageWidget()
+        self.scroll_area_right.setWidget(self.image_widget_right)
+        right_layout.addWidget(self.scroll_area_right)
+        right_group.setLayout(right_layout)
+
+        image_layout.addWidget(left_group)
+        image_layout.addWidget(right_group)
+
+        layout.addLayout(image_layout, stretch=1)
+
+        # 스크롤 동기화
+        self.scroll_area_left.verticalScrollBar().valueChanged.connect(self.scroll_area_right.verticalScrollBar().setValue)
+        self.scroll_area_right.verticalScrollBar().valueChanged.connect(self.scroll_area_left.verticalScrollBar().setValue)
+        self.scroll_area_left.horizontalScrollBar().valueChanged.connect(self.scroll_area_right.horizontalScrollBar().setValue)
+        self.scroll_area_right.horizontalScrollBar().valueChanged.connect(self.scroll_area_left.horizontalScrollBar().setValue)
 
         # 하단 버튼
         button_layout = QHBoxLayout()
@@ -223,7 +254,10 @@ class LaneDetectionSAM3Dialog(QDialog):
             h, w = self.original_image.shape[:2]
             self.original_size = (w, h)
             self._update_display()
-            self.image_widget.setZoom(0.8)  # 80% 크기로 표시
+            
+            # 초기 줌 설정 (양쪽에 적용)
+            self.image_widget_left.setZoom(0.6)
+            self.image_widget_right.setZoom(0.6)
             self._update_zoom_label()
 
     def _start_detection(self):
@@ -269,13 +303,13 @@ class LaneDetectionSAM3Dialog(QDialog):
         QMessageBox.critical(self, "검출 오류", f"SAM3 검출 중 오류 발생:\n{error_msg}")
 
     def _update_display(self):
-        """화면 갱신 - 수동 라벨링과 동일한 방식으로 표시"""
+        """화면 갱신 - 좌측: 마스크, 우측: 라인"""
         if self.original_image is None:
             return
 
-        display_img = self.original_image.copy()
-
-        # 검출된 차선 그리기 (수동 라벨링과 동일한 스타일)
+        # 1. 오른쪽 이미지 (기존 라인 드로잉)
+        display_img_right = self.original_image.copy()
+        
         for lane in self.detected_lanes:
             lane_id = lane['id']
             points = lane['points']
@@ -283,44 +317,67 @@ class LaneDetectionSAM3Dialog(QDialog):
 
             # 점 그리기
             for px, py in points:
-                cv2.circle(display_img, (px, py), 4, color, -1)
+                cv2.circle(display_img_right, (px, py), 4, color, -1)
 
             # 선 그리기 (점이 2개 이상이면 연결)
             if len(points) >= 2:
                 pts = np.array(points, dtype=np.int32)
-                cv2.polylines(display_img, [pts], False, color, 2)
+                cv2.polylines(display_img_right, [pts], False, color, 2)
 
-        # Qt 이미지로 변환
-        h, w, ch = display_img.shape
-        bytes_per_line = ch * w
-        qt_image = QImage(display_img.data, w, h, bytes_per_line, QImage.Format_BGR888)
-        pixmap = QPixmap.fromImage(qt_image)
+        # 2. 왼쪽 이미지 (마스크 오버레이)
+        display_img_left = self.original_image.copy()
+        overlay = display_img_left.copy()
+        
+        for lane in self.detected_lanes:
+            mask = lane['mask']
+            lane_id = lane['id']
+            # 마스크와 라인이 되도록 같은 색상 계열 사용 (디버깅 용이)
+            color = self.LANE_COLORS[lane_id % len(self.LANE_COLORS)]
+            
+            # 마스크가 있는 영역에 색상 입히기
+            overlay[mask > 0] = color
 
-        self.image_widget.setPixmap(pixmap)
+        # 반투명 합성 (Alpha Blending)
+        alpha = 0.5
+        cv2.addWeighted(overlay, alpha, display_img_left, 1 - alpha, 0, display_img_left)
+
+        # Qt 이미지로 변환 및 표시
+        def to_qpixmap(cv_img):
+            h, w, ch = cv_img.shape
+            bytes_per_line = ch * w
+            qt_image = QImage(cv_img.data, w, h, bytes_per_line, QImage.Format_BGR888)
+            return QPixmap.fromImage(qt_image)
+
+        self.image_widget_left.setPixmap(to_qpixmap(display_img_left))
+        self.image_widget_right.setPixmap(to_qpixmap(display_img_right))
+        
         self._update_zoom_label()
 
     def _adjust_zoom(self, delta):
-        """줌 조정"""
-        current_zoom = self.image_widget.getZoom()
-        self.image_widget.setZoom(current_zoom + delta)
+        """줌 조정 (양쪽 동시)"""
+        current_zoom = self.image_widget_left.getZoom() # 하나만 기준 잡음
+        new_zoom = current_zoom + delta
+        self.image_widget_left.setZoom(new_zoom)
+        self.image_widget_right.setZoom(new_zoom)
         self._update_zoom_label()
 
     def _fit_to_window(self):
-        """창에 맞게 줌"""
+        """창에 맞게 줌 (왼쪽 기준 계산 후 양쪽 적용)"""
         if self.original_size:
-            scroll_size = self.scroll_area.viewport().size()
+            scroll_size = self.scroll_area_left.viewport().size()
             orig_w, orig_h = self.original_size
 
             zoom_w = scroll_size.width() / orig_w
             zoom_h = scroll_size.height() / orig_h
             new_zoom = min(zoom_w, zoom_h) * 0.95
 
-            self.image_widget.setZoom(new_zoom)
+            self.image_widget_left.setZoom(new_zoom)
+            self.image_widget_right.setZoom(new_zoom)
             self._update_zoom_label()
 
     def _update_zoom_label(self):
         """줌 레이블 업데이트"""
-        zoom = self.image_widget.getZoom()
+        zoom = self.image_widget_left.getZoom()
         self.zoom_label.setText(f"{int(zoom * 100)}%")
 
     def _get_save_path(self):
