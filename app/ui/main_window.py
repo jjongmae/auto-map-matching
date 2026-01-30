@@ -678,6 +678,9 @@ class MapMatcherWindow(QMainWindow):
         self.btn_lane_fit_de = QPushButton("차선 피팅\n(DE)")
         self.btn_lane_fit_de.clicked.connect(lambda: self._on_lane_fit_clicked('differential_evolution'))
 
+        self.btn_lane_fit_de_parallel = QPushButton("차선 피팅\n(DE 병렬)")
+        self.btn_lane_fit_de_parallel.clicked.connect(lambda: self._on_lane_fit_clicked('differential_evolution_parallel'))
+
         layout.addWidget(self.btn_compare_features)
         layout.addWidget(self.btn_compare_features_orb)
 
@@ -687,6 +690,7 @@ class MapMatcherWindow(QMainWindow):
         layout.addWidget(self.btn_lane_fit_nm)
         layout.addWidget(self.btn_lane_fit_lm)
         layout.addWidget(self.btn_lane_fit_de)
+        layout.addWidget(self.btn_lane_fit_de_parallel)
 
         layout.addStretch()
 
@@ -821,7 +825,8 @@ class MapMatcherWindow(QMainWindow):
             'powell': 'Powell',
             'nelder_mead': 'NM',
             'lm': 'LM',
-            'differential_evolution': 'DE'
+            'differential_evolution': 'DE',
+            'differential_evolution_parallel': 'DE (병렬)'
         }
 
         if not self.current_image_path:
@@ -870,71 +875,73 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText("라벨링 점이 부족합니다 (최소 2개 필요)")
             return
 
-        
-        # --- 로그 기록 시작 ---
-        print("\n" + "="*50)
-        print("[라인 피팅 시작 로그]")
-        
-        # 1. 라벨링 데이터 (그룹 점)
-        print(f"\n1. 라벨링 데이터 (총 {len(lanes)}개 그룹)")
-        for i, lane in enumerate(lanes):
-            pts = lane.get('points', [])
-            print(f"   - 그룹 {i} (점 {len(pts)}개): {pts}")
 
-        # 2. 투영된 지도 데이터 (그룹 점)
-        print("\n2. 투영된 지도 데이터 (초기 상태 - 화면 내 유효 점만 표시)")
         
-        # 로그용 초기 투영 데이터 계산
-        initial_b2_lines = []
-        try:
-            proj_result = self.projector.projection(self.camera_params, target_layers=['b2'], as_float=True, include_cache=False)
-            initial_b2_lines = proj_result.get('b2', []) if isinstance(proj_result, dict) else getattr(proj_result, 'projected_layers', {}).get('b2', [])
-        except Exception:
-            pass
-            
-        # 해상도 기준 설정 (1920x1080)
-        res_w = getattr(self.camera_params, 'resolution_width', 0) or 1920
-        res_h = getattr(self.camera_params, 'resolution_height', 0) or 1080
-        
-        print(f"   - 해상도 기준: {res_w} x {res_h} (마진 0px)")
-        print(f"   - 원본 투영 라인 그룹 수: {len(initial_b2_lines)}")
-        
-        valid_total_count = 0
-        
-        for i, line in enumerate(initial_b2_lines):
-            if len(line) == 0:
-                continue
-                
-            pts_arr = np.array(line, dtype=np.float64)
-            
-            # 필터링 로직
-            mask = (
-                (pts_arr[:, 0] >= 0) & (pts_arr[:, 0] <= res_w) &
-                (pts_arr[:, 1] >= 0) & (pts_arr[:, 1] <= res_h)
-            )
-            valid_pts = pts_arr[mask]
-            
-            valid_total_count += len(valid_pts)
-            
-            if len(valid_pts) > 0:
-                print(f"   - 그룹 {i} (유효 {len(valid_pts)}/{len(line)}개): {valid_pts.tolist()}")
-            else:
-                print(f"   - 그룹 {i} (유효 0/{len(line)}개): [모두 화면 밖 - 제외됨]")
-
-        print(f"   => 총 최적화 사용 예정 점 개수: {valid_total_count}")
-        print("="*50 + "\n")
+        # --- 디버깅 로그 (필요시 주석 해제) ---
+        # print("\n" + "="*50)
+        # print("[라인 피팅 시작 로그]")
+        # 
+        # # 1. 라벨링 데이터 (그룹 점)
+        # print(f"\n1. 라벨링 데이터 (총 {len(lanes)}개 그룹)")
+        # for i, lane in enumerate(lanes):
+        #     pts = lane.get('points', [])
+        #     print(f"   - 그룹 {i} (점 {len(pts)}개): {pts}")
+        # 
+        # # 2. 투영된 지도 데이터 (그룹 점)
+        # print("\n2. 투영된 지도 데이터 (초기 상태 - 화면 내 유효 점만 표시)")
+        # 
+        # # 로그용 초기 투영 데이터 계산
+        # initial_b2_lines = []
+        # try:
+        #     proj_result = self.projector.projection(self.camera_params, target_layers=['b2'], as_float=True, include_cache=False)
+        #     initial_b2_lines = proj_result.get('b2', []) if isinstance(proj_result, dict) else getattr(proj_result, 'projected_layers', {}).get('b2', [])
+        # except Exception:
+        #     pass
+        #     
+        # # 해상도 기준 설정 (1920x1080)
+        # res_w = getattr(self.camera_params, 'resolution_width', 0) or 1920
+        # res_h = getattr(self.camera_params, 'resolution_height', 0) or 1080
+        # 
+        # print(f"   - 해상도 기준: {res_w} x {res_h} (마진 0px)")
+        # print(f"   - 원본 투영 라인 그룹 수: {len(initial_b2_lines)}")
+        # 
+        # valid_total_count = 0
+        # 
+        # for i, line in enumerate(initial_b2_lines):
+        #     if len(line) == 0:
+        #         continue
+        #         
+        #     pts_arr = np.array(line, dtype=np.float64)
+        #     
+        #     # 필터링 로직
+        #     mask = (
+        #         (pts_arr[:, 0] >= 0) & (pts_arr[:, 0] <= res_w) &
+        #         (pts_arr[:, 1] >= 0) & (pts_arr[:, 1] <= res_h)
+        #     )
+        #     valid_pts = pts_arr[mask]
+        #     
+        #     valid_total_count += len(valid_pts)
+        #     
+        #     if len(valid_pts) > 0:
+        #         print(f"   - 그룹 {i} (유효 {len(valid_pts)}/{len(line)}개): {valid_pts.tolist()}")
+        #     else:
+        #         print(f"   - 그룹 {i} (유효 0/{len(line)}개): [모두 화면 밖 - 제외됨]")
+        # 
+        # print(f"   => 총 최적화 사용 예정 점 개수: {valid_total_count}")
+        # print("="*50 + "\n")
         # --- 로그 기록 종료 ---
 
         self.status_label.setText(f"차선 피팅 중... ({algorithm_names.get(algorithm, algorithm)})")
 
         # 알고리즘별 함수 선택
-        from app.core.auto_fitter import fit_powell, fit_nelder_mead, fit_lm, fit_differential_evolution
+        from app.core.auto_fitter import fit_powell, fit_nelder_mead, fit_lm, fit_differential_evolution, fit_differential_evolution_parallel
 
         fit_functions = {
             'powell': fit_powell,
             'nelder_mead': fit_nelder_mead,
             'lm': fit_lm,
-            'differential_evolution': fit_differential_evolution
+            'differential_evolution': fit_differential_evolution,
+            'differential_evolution_parallel': fit_differential_evolution_parallel
         }
 
         fit_func = fit_functions.get(algorithm, fit_powell)

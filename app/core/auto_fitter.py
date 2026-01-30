@@ -383,7 +383,7 @@ def fit_differential_evolution(projector, camera_params, lane_points):
         popsize=15,          # 개체군 크기 (파라미터 수 × 3-4)
         atol=0.05,           # 절대 허용 오차
         tol=0.05,            # 상대 허용 오차
-        workers=1,           # 단일 스레드 (pickle 문제로 병렬 처리 비활성화, KD-Tree로 최적화됨)
+        workers=1,           # 단일 스레드 (안정성 우선, 병렬 버전은 fit_differential_evolution_parallel 사용)
         updating='deferred', # 비동기 업데이트 (수렴 속도 향상)
         strategy='best1bin', # 기본 전략 (균형잡힌 성능)
         mutation=(0.5, 1.5), # 변이 상수 범위
@@ -392,3 +392,129 @@ def fit_differential_evolution(projector, camera_params, lane_points):
 
     print(f"[auto_fitter] iterations={result.nit}, final_cost={result.fun:.2f}")
     return _extract_result(result, "Differential Evolution")
+
+
+# ============================================================
+# 병렬 처리 버전 (Pickle 가능한 구현)
+# ============================================================
+
+# 전역 변수 (멀티프로세싱을 위해 필요)
+_global_projector = None
+_global_camera_params = None
+_global_lane_pts = None
+
+
+def _parallel_cost_function(params):
+    """병렬 처리 가능한 전역 cost function (pickle 가능)"""
+    global _global_projector, _global_camera_params, _global_lane_pts
+    
+    yaw, pitch, roll, f = params
+    opt_params = copy.deepcopy(_global_camera_params)
+    
+    opt_params.yaw = yaw
+    opt_params.pitch = pitch
+    opt_params.roll = roll
+    opt_params.fx = f
+    opt_params.fy = f
+
+    try:
+        # 실수형 좌표 투영 사용 (최적화용)
+        projected_layers = _global_projector.projection(opt_params, target_layers=['b2'], as_float=True, include_cache=False)
+
+        if not projected_layers or 'b2' not in projected_layers:
+            return 1e10
+
+        b2_lines = projected_layers['b2']
+        if not b2_lines:
+            return 1e10
+
+        projected_pts = []
+        for line in b2_lines:
+            # 밀도 보강 (정밀도 향상)
+            dense_line = densify_polyline(line, density=2.0)
+            for pt in dense_line:
+                projected_pts.append(pt)
+
+        if not projected_pts:
+            return 1e10
+
+        projected_pts = np.array(projected_pts, dtype=np.float64)
+
+        # 화면 밖의 점 필터링 (마진 없음: 0px)
+        w = getattr(opt_params, 'resolution_width', 0) or 1920
+        h = getattr(opt_params, 'resolution_height', 0) or 1080
+        margin = 0
+
+        mask = (
+            (projected_pts[:, 0] >= -margin) & 
+            (projected_pts[:, 0] <= w + margin) & 
+            (projected_pts[:, 1] >= -margin) & 
+            (projected_pts[:, 1] <= h + margin)
+        )
+        filtered_pts = projected_pts[mask]
+
+        if len(filtered_pts) == 0:
+            return 1e10
+
+        # KD-Tree를 사용한 최적화된 거리 계산
+        tree = cKDTree(filtered_pts)
+        min_distances, _ = tree.query(_global_lane_pts, k=1)
+        cost = np.mean(min_distances)
+
+        return cost
+
+    except Exception as e:
+        print(f"[auto_fitter] 병렬 처리 예외: {e}")
+        return 1e10
+
+
+def fit_differential_evolution_parallel(projector, camera_params, lane_points, workers=16):
+    """Differential Evolution 알고리즘으로 최적화 (병렬 처리 버전)
+    
+    Args:
+        projector: MapProjector 객체
+        camera_params: CameraParams 객체
+        lane_points: 라벨링된 차선 점 리스트
+        workers: 사용할 CPU 코어 수 (기본값: 16, -1이면 모든 코어 사용)
+    """
+    global _global_projector, _global_camera_params, _global_lane_pts
+    
+    prep = _prepare_optimization(projector, camera_params, lane_points)
+    if prep is None:
+        return None
+
+    lane_pts, initial_params, bounds = prep
+    
+    # 전역 변수에 할당 (멀티프로세싱을 위해)
+    _global_projector = projector
+    _global_camera_params = camera_params
+    _global_lane_pts = lane_pts
+
+    # 초기 비용 확인
+    initial_cost = _parallel_cost_function(initial_params)
+    print(f"[auto_fitter] 초기 상태(수정 전) Cost: {initial_cost:.2f}")
+
+    print(f"[auto_fitter] Differential Evolution (병렬) 알고리즘 시작... (workers={workers})")
+    result = differential_evolution(
+        _parallel_cost_function,
+        bounds=bounds,
+        seed=42,             # 재현성 보장
+        maxiter=100,         # 최대 세대 수 (실제로는 조기 종료로 더 적게 실행됨)
+        popsize=10,          # 개체군 크기 (빠른 수렴을 위해 감소)
+        atol=0.05,           # 절대 허용 오차
+        tol=0.05,            # 상대 허용 오차
+        workers=workers,     # 병렬 처리 활성화!
+        updating='deferred', # 비동기 업데이트 (수렴 속도 향상)
+        strategy='best1bin', # 기본 전략 (균형잡힌 성능)
+        mutation=(0.5, 1.5), # 변이 상수 범위
+        recombination=0.7    # 재조합 확률
+    )
+
+    print(f"[auto_fitter] iterations={result.nit}, final_cost={result.fun:.2f}")
+    
+    # 전역 변수 정리
+    _global_projector = None
+    _global_camera_params = None
+    _global_lane_pts = None
+    
+    return _extract_result(result, "Differential Evolution (병렬)")
