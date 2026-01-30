@@ -16,3 +16,6 @@ pillow
 
 # SAM3 지원 (8.3.237 이상 필요)
 ultralytics>=8.3.237
+
+# 스켈레톤 기반 후처리
+scikit-image

@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QMessageBox, QScrollArea, QWidget,
-    QProgressDialog, QComboBox, QSpinBox, QGroupBox, QLineEdit, QDoubleSpinBox
+    QProgressDialog, QGroupBox, QLineEdit, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QImage, QPainter
@@ -59,26 +59,26 @@ class DetectionWorker(QThread):
     finished = Signal(list)  # 검출된 차선 리스트
     error = Signal(str)      # 에러 메시지
 
-    def __init__(self, image_path, text_prompts, conf=0.5, poly_degree=2):
+    def __init__(self, image_path, text_prompts, conf=0.5):
         super().__init__()
         self.image_path = image_path
         self.text_prompts = text_prompts
         self.conf = conf
-        self.poly_degree = poly_degree
 
     def run(self):
         try:
             from app.core.lane_detector_sam3 import LaneDetectorSAM3
 
+            # 스켈레톤 기반 후처리 사용
             detector = LaneDetectorSAM3(
                 model_path="models/sam3.pt",
                 device="cuda",
-                conf=self.conf
+                conf=self.conf,
+                use_skeleton=True
             )
             lanes = detector.detect_lanes(
                 self.image_path,
-                text_prompts=self.text_prompts,
-                poly_degree=self.poly_degree
+                text_prompts=self.text_prompts
             )
             self.finished.emit(lanes)
         except Exception as e:
@@ -147,16 +147,6 @@ class LaneDetectionSAM3Dialog(QDialog):
         self.conf_spinbox.setDecimals(2)
         self.conf_spinbox.setMinimumWidth(80)
         settings_layout.addWidget(self.conf_spinbox)
-
-        settings_layout.addWidget(QLabel("라인 보정:"))
-        self.smoothing_combo = QComboBox()
-        self.smoothing_combo.addItem("안함", 0)
-        self.smoothing_combo.addItem("직선으로", 1)
-        self.smoothing_combo.addItem("부드러운 곡선", 2)
-        self.smoothing_combo.addItem("복잡한 곡선", 3)
-        self.smoothing_combo.setCurrentIndex(2)  # 기본값: 부드러운 곡선
-        self.smoothing_combo.setMinimumWidth(120)
-        settings_layout.addWidget(self.smoothing_combo)
 
         settings_layout.addStretch()
 
@@ -272,11 +262,8 @@ class LaneDetectionSAM3Dialog(QDialog):
 
         prompts = [p.strip() for p in self.prompt_edit.text().split(",")]
         conf = self.conf_spinbox.value()
-        poly_degree = self.smoothing_combo.currentData()
 
-        self.worker = DetectionWorker(
-            self.image_path, prompts, conf, poly_degree
-        )
+        self.worker = DetectionWorker(self.image_path, prompts, conf)
         self.worker.finished.connect(self._on_detection_finished)
         self.worker.error.connect(self._on_detection_error)
         self.worker.start()

@@ -9,22 +9,40 @@ import cv2
 import numpy as np
 from typing import List, Dict, Optional
 
+from app.core.skeleton_lane_processor import SkeletonLaneProcessor, SkeletonProcessorConfig
+
 
 class LaneDetectorSAM3:
     """SAM3 기반 차선 검출기"""
 
-    def __init__(self, model_path: str = "models/sam3.pt", device: str = "cuda", conf: float = 0.5):
+    def __init__(
+        self,
+        model_path: str = "models/sam3.pt",
+        device: str = "cuda",
+        conf: float = 0.5,
+        use_skeleton: bool = False,
+        skeleton_config: Optional[SkeletonProcessorConfig] = None
+    ):
         """
         Args:
             model_path: SAM3 모델 파일 경로
             device: cuda 또는 cpu
             conf: 신뢰도 임계값 (기본 0.5)
+            use_skeleton: 스켈레톤 기반 후처리 사용 여부 (기본 False)
+            skeleton_config: 스켈레톤 프로세서 설정 (use_skeleton=True일 때만 적용)
         """
         self.model_path = model_path
         self.device = device
         self.conf = conf
+        self.use_skeleton = use_skeleton
         self.predictor = None
         self.model_loaded = False
+
+        # 스켈레톤 프로세서 초기화
+        if self.use_skeleton:
+            self.skeleton_processor = SkeletonLaneProcessor(skeleton_config)
+        else:
+            self.skeleton_processor = None
 
     def load_model(self) -> bool:
         """SAM3 모델 로드"""
@@ -89,7 +107,10 @@ class LaneDetectorSAM3:
                 return []
 
             lanes = self._process_results(results, pixel_interval, poly_degree)
-            print(f"[SAM3] {len(lanes)}개의 차선 검출됨 (다항식 피팅: {poly_degree}차)")
+            if self.use_skeleton:
+                print(f"[SAM3] {len(lanes)}개의 차선 검출됨 (스켈레톤 후처리)")
+            else:
+                print(f"[SAM3] {len(lanes)}개의 차선 검출됨 (다항식 피팅: {poly_degree}차)")
             return lanes
 
         except Exception as e:
@@ -108,16 +129,24 @@ class LaneDetectorSAM3:
 
             masks = result.masks.data.cpu().numpy()
 
-            for i, mask in enumerate(masks):
-                # 마스크에서 폴리라인 추출 (다항식 피팅 적용)
-                points = self._mask_to_polyline(mask, pixel_interval, poly_degree=poly_degree)
+            # 스켈레톤 기반 후처리 사용 시
+            if self.use_skeleton and self.skeleton_processor is not None:
+                skeleton_lanes = self.skeleton_processor.process_masks(masks)
+                # ID 재부여
+                for lane in skeleton_lanes:
+                    lane["id"] = len(lanes)
+                    lanes.append(lane)
+            else:
+                # 기존 방식: 마스크에서 직접 폴리라인 추출
+                for i, mask in enumerate(masks):
+                    points = self._mask_to_polyline(mask, pixel_interval, poly_degree=poly_degree)
 
-                if len(points) >= 2:
-                    lanes.append({
-                        "id": len(lanes),
-                        "points": points,
-                        "mask": (mask * 255).astype(np.uint8)
-                    })
+                    if len(points) >= 2:
+                        lanes.append({
+                            "id": len(lanes),
+                            "points": points,
+                            "mask": (mask * 255).astype(np.uint8)
+                        })
 
         return lanes
 
@@ -252,7 +281,9 @@ def detect_lanes_sam3(
     text_prompts: List[str] = None,
     device: str = "cuda",
     conf: float = 0.5,
-    poly_degree: int = 2
+    poly_degree: int = 2,
+    use_skeleton: bool = False,
+    skeleton_config: Optional[SkeletonProcessorConfig] = None
 ) -> List[Dict]:
     """
     SAM3로 차선 검출하는 헬퍼 함수
@@ -264,6 +295,14 @@ def detect_lanes_sam3(
         device: cuda 또는 cpu
         conf: 신뢰도 임계값
         poly_degree: 다항식 피팅 차수 (0이면 피팅 안함, 기본 2차, 곡선 도로는 3차 권장)
+        use_skeleton: 스켈레톤 기반 후처리 사용 여부 (기본 False)
+        skeleton_config: 스켈레톤 프로세서 설정
     """
-    detector = LaneDetectorSAM3(model_path=model_path, device=device, conf=conf)
+    detector = LaneDetectorSAM3(
+        model_path=model_path,
+        device=device,
+        conf=conf,
+        use_skeleton=use_skeleton,
+        skeleton_config=skeleton_config
+    )
     return detector.detect_lanes(image_path, text_prompts, poly_degree=poly_degree)
