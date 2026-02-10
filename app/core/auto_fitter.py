@@ -219,10 +219,10 @@ def _prepare_optimization(projector, camera_params, lane_points):
           f"roll={initial_params[2]:.2f}, f={initial_params[3]:.1f}")
 
     bounds = [
-        (initial_params[0] - 20, initial_params[0] + 20),  # yaw
-        (initial_params[1] - 20, initial_params[1] + 20),  # pitch
+        (initial_params[0] - 5, initial_params[0] + 5),    # yaw (ONVIF 오차 ±5도)
+        (initial_params[1] - 5, initial_params[1] + 5),    # pitch (ONVIF 오차 ±5도)
         (initial_params[2] - 1, initial_params[2] + 1),    # roll (PTZ 카메라: 거의 고정)
-        (max(100, initial_params[3] * 0.8), initial_params[3] * 1.2),  # f (fx = fy)
+        (max(100, initial_params[3] * 0.8), initial_params[3] * 1.2),  # f ±20%
     ]
     
     print("[auto_fitter] 파라미터 검색 범위 (Bounds):")

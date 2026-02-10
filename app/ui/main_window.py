@@ -229,12 +229,12 @@ class MapMatcherWindow(QMainWindow):
                 'spinbox': spinbox
             }
 
-            spinbox.setRange(100, 5000)
+            spinbox.setRange(100, 100000)
             spinbox.setDecimals(2)
             spinbox.setSingleStep(1)
 
             slider_scale = 100
-            slider.setRange(100 * slider_scale, 5000 * slider_scale)
+            slider.setRange(100 * slider_scale, 100000 * slider_scale)
 
             def make_spinbox_handler(ctrl, scale=slider_scale):
                 def handler(val):
