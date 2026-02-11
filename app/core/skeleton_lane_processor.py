@@ -25,14 +25,14 @@ class SkeletonProcessorConfig:
     mask_iou_threshold: float = 0.5   # 마스크 중복 판정 IoU 임계값
     mask_contain_threshold: float = 0.7  # 마스크 포함 비율 임계값
     merge_radius: float = 10.0        # 근접점 병합 반경 (px)
-    neighbor_radius: float = 15.0     # 연결 판정 반경 (px)
-    min_cluster_points: int = 6       # 최소 클러스터 점 수 (약 60px)
+    neighbor_radius: float = 12.0     # 연결 판정 반경 (px)
+    min_cluster_points: int = 3       # 최소 클러스터 점 수
     max_curvature_change: float = 1.0 # 최대 곡률 변화 (rad)
     polyline_distance_threshold: float = 15.0  # 폴리라인 중복 판정 최소 거리 (px)
     polyline_overlap_ratio: float = 0.5       # 폴리라인 중복 판정 겹침 비율
-    spline_smoothing: float = 0.0     # 스플라인 평활화 계수
+    spline_smoothing: float = 5.0     # 스플라인 평활화 계수 (노이즈 제거용)
     spline_degree: int = 3            # 스플라인 차수
-    output_point_interval: float = 20.0  # 출력 점 간격 (px)
+    output_point_interval: float = 40.0  # 출력 점 간격 (px)
 
 
 class SkeletonLaneProcessor:
@@ -64,7 +64,6 @@ class SkeletonLaneProcessor:
         """
         # 마스크 중복 제거 (NMS)
         filtered_masks = self._remove_duplicate_masks(masks)
-        print(f"[Skeleton] 마스크 NMS: {len(masks)}개 → {len(filtered_masks)}개")
 
         lanes = []
 
@@ -82,7 +81,6 @@ class SkeletonLaneProcessor:
 
         # 폴리라인 중복 제거
         filtered_lanes = self._remove_duplicate_polylines(lanes)
-        print(f"[Skeleton] 폴리라인 중복 제거: {len(lanes)}개 → {len(filtered_lanes)}개")
 
         # ID 재부여
         for i, lane in enumerate(filtered_lanes):
@@ -401,33 +399,63 @@ class SkeletonLaneProcessor:
         return components
 
     def _order_cluster_points(self, points: np.ndarray) -> np.ndarray:
-        """Greedy Nearest Neighbor로 점 순서 정렬"""
+        """PCA 기반 점 순서 정렬
+
+        점들이 가장 많이 퍼진 방향(주축)을 찾아서 그 방향으로 정렬합니다.
+        지그재그 문제를 방지하고 차선의 자연스러운 흐름을 유지합니다.
+        """
         if len(points) <= 2:
             return points
 
-        # 시작점 결정: y값이 가장 작은 점 (이미지 상단)에서 시작
-        # 차선은 보통 위에서 아래로 진행하므로
-        start_idx = np.argmin(points[:, 1])
+        # 1. 점들의 중심 계산
+        centroid = points.mean(axis=0)
+        centered = points - centroid
 
-        ordered = [start_idx]
-        remaining = set(range(len(points))) - {start_idx}
+        # 2. 공분산 행렬로 주축 방향 계산 (PCA)
+        cov = np.cov(centered.T)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
 
-        current = points[start_idx]
+        # 가장 큰 고유값에 해당하는 고유벡터 = 주축 방향
+        principal_axis = eigenvectors[:, np.argmax(eigenvalues)]
 
-        while remaining:
-            # 남은 점 중 가장 가까운 점 찾기
-            remaining_indices = list(remaining)
-            remaining_points = points[remaining_indices]
+        # 3. 각 점을 주축에 투영
+        projections = np.dot(centered, principal_axis)
 
-            distances = np.linalg.norm(remaining_points - current, axis=1)
-            nearest_local_idx = np.argmin(distances)
-            nearest_idx = remaining_indices[nearest_local_idx]
+        # 4. 투영값 순서로 정렬 (작은 값 → 큰 값)
+        sorted_indices = np.argsort(projections)
 
-            ordered.append(nearest_idx)
-            remaining.remove(nearest_idx)
-            current = points[nearest_idx]
+        # 5. 차선이 위→아래로 진행하도록 방향 조정
+        # (첫 점의 y가 마지막 점의 y보다 크면 순서 뒤집기)
+        ordered_points = points[sorted_indices]
+        if ordered_points[0, 1] > ordered_points[-1, 1]:
+            ordered_points = ordered_points[::-1]
 
-        return points[ordered]
+        # 6. 이동평균으로 지그재그 제거
+        smoothed_points = self._smooth_zigzag(ordered_points)
+
+        return smoothed_points
+
+    def _smooth_zigzag(self, points: np.ndarray, window: int = 3) -> np.ndarray:
+        """이동평균으로 지그재그 제거
+
+        Args:
+            points: 정렬된 점 배열
+            window: 이동평균 윈도우 크기 (홀수 권장)
+
+        Returns:
+            스무딩된 점 배열
+        """
+        if len(points) <= window:
+            return points
+
+        smoothed = np.copy(points).astype(np.float64)
+        half = window // 2
+
+        # 양 끝점은 유지하고 중간 점들만 스무딩
+        for i in range(half, len(points) - half):
+            smoothed[i] = points[i - half:i + half + 1].mean(axis=0)
+
+        return smoothed
 
     def _compute_curvature(self, p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> float:
         """3점 원 공식으로 곡률 계산 (Menger curvature)"""
