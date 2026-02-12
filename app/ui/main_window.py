@@ -1070,8 +1070,3 @@ class MapMatcherWindow(QMainWindow):
             self.status_label.setText(f"차선 피팅 오류: {e}")
             import traceback
             traceback.print_exc()
-
-        except Exception as e:
-            self.status_label.setText(f"차선 피팅 오류: {e}")
-            import traceback
-            traceback.print_exc()
