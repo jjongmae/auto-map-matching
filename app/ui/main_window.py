@@ -468,6 +468,10 @@ class MapMatcherWindow(QMainWindow):
             for img_file in sorted(image_files):
                 self.image_list.addItem(img_file.name)
             self.status_label.setText(f"{len(image_files)}개의 이미지를 찾았습니다")
+            
+            # 첫 번째 이미지 자동 선택
+            if self.image_list.count() > 0:
+                self.image_list.setCurrentRow(0)
         else:
             self.status_label.setText(f"이미지 폴더에 이미지가 없습니다: {image_dir}")
 
