@@ -107,10 +107,11 @@ class LaneDetectorSAM3:
                 return []
 
             lanes = self._process_results(results, pixel_interval, poly_degree)
+            total_points = sum(len(lane['points']) for lane in lanes)
             if self.use_skeleton:
-                print(f"[SAM3] {len(lanes)}개의 차선 검출됨 (스켈레톤 후처리)")
+                print(f"[SAM3] 차선 검출 완료: 총 {total_points}개 점 (스켈레톤 후처리)")
             else:
-                print(f"[SAM3] {len(lanes)}개의 차선 검출됨 (다항식 피팅: {poly_degree}차)")
+                print(f"[SAM3] 차선 검출 완료: 총 {total_points}개 점 (다항식 피팅: {poly_degree}차)")
             return lanes
 
         except Exception as e:
@@ -129,13 +130,26 @@ class LaneDetectorSAM3:
 
             masks = result.masks.data.cpu().numpy()
 
+            # 디버그: 마스크 크기와 원본 이미지 크기 비교
+            orig_shape = getattr(result, 'orig_shape', None)
+            print(f"[SAM3 DEBUG] 마스크 shape: {masks.shape}, 원본 이미지 shape: {orig_shape}")
+
             # 스켈레톤 기반 후처리 사용 시
             if self.use_skeleton and self.skeleton_processor is not None:
-                skeleton_lanes = self.skeleton_processor.process_masks(masks)
-                # ID 재부여
-                for lane in skeleton_lanes:
-                    lane["id"] = len(lanes)
-                    lanes.append(lane)
+                # 점 목록과 필터링된 마스크, 개별 마스크 추출
+                all_points, combined_mask, individual_masks = self.skeleton_processor.process_masks(masks)
+
+                # SAM3 원본 마스크를 uint8로 변환 (디버깅용)
+                raw_masks = [(m * 255).astype(np.uint8) for m in masks]
+
+                if all_points and combined_mask is not None:
+                    lanes.append({
+                        "id": len(lanes),
+                        "points": all_points,
+                        "mask": combined_mask,
+                        "individual_masks": individual_masks,  # 필터링된 마스크 리스트
+                        "raw_masks": raw_masks  # SAM3 원본 마스크 (필터링 전)
+                    })
             else:
                 # 기존 방식: 마스크에서 직접 폴리라인 추출
                 for i, mask in enumerate(masks):

@@ -9,7 +9,8 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton,
     QSlider, QDoubleSpinBox, QGroupBox, QHBoxLayout, QVBoxLayout,
-    QGridLayout, QComboBox, QFileDialog, QListWidget, QCheckBox
+    QGridLayout, QFileDialog, QListWidget, QCheckBox,
+    QDialog, QListWidgetItem, QDialogButtonBox, QLineEdit
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage
@@ -17,6 +18,70 @@ import cv2
 import numpy as np
 
 from u1gis_geovision import MapProjector, CameraParams
+
+
+class CameraSelectionDialog(QDialog):
+    """카메라 선택을 위한 다이얼로그 (ComboBox 대체)"""
+    def __init__(self, cameras, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("카메라 선택")
+        self.resize(400, 500)
+
+        layout = QVBoxLayout(self)
+
+        # 검색 필터
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("카메라 이름 검색...")
+        self.search_edit.textChanged.connect(self._filter_list)
+        layout.addWidget(self.search_edit)
+
+        # 리스트 위젯
+        self.list_widget = QListWidget()
+        layout.addWidget(self.list_widget)
+
+        # 버튼 박스
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.cameras = cameras
+        self.selected_camera_folder = None
+        self.selected_camera_name = None
+
+        self._populate_list()
+
+        # 더블 클릭 시 선택 처리
+        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
+
+    def _populate_list(self):
+        self.list_widget.clear()
+        for cam in self.cameras:
+            item_text = cam['name']
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, cam)  # 전체 데이터 저장
+            self.list_widget.addItem(item)
+
+    def _filter_list(self, text):
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            # 대소문자 구분 없이 검색
+            if text.lower() in item.text().lower():
+                item.setHidden(False)
+            else:
+                item.setHidden(True)
+
+    def _on_item_double_clicked(self, item):
+        self.accept()
+
+    def accept(self):
+        # 선택된 아이템 확인
+        selected_items = self.list_widget.selectedItems()
+        if selected_items:
+            cam_data = selected_items[0].data(Qt.UserRole)
+            self.selected_camera_folder = cam_data['folder']
+            self.selected_camera_name = cam_data['name']
+        super().accept()
 
 
 class MapMatcherWindow(QMainWindow):
@@ -37,6 +102,9 @@ class MapMatcherWindow(QMainWindow):
         self.projector = None
         self.projected_map_data = None
         self.camera_params = CameraParams()
+
+        # 카메라 목록 데이터
+        self.camera_data_list = []
         
 
         # --- UI 설정 ---
@@ -90,12 +158,17 @@ class MapMatcherWindow(QMainWindow):
 
     def _create_camera_selection_group(self):
         group = QGroupBox("카메라 선택 (YAML)")
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
 
-        self.camera_combo = QComboBox()
-        self.camera_combo.currentIndexChanged.connect(self._on_camera_selected)
+        self.camera_name_edit = QLineEdit()
+        self.camera_name_edit.setReadOnly(True)
+        self.camera_name_edit.setPlaceholderText("카메라를 선택하세요")
 
-        layout.addWidget(self.camera_combo)
+        select_button = QPushButton("선택...")
+        select_button.clicked.connect(self._open_camera_selection_dialog)
+
+        layout.addWidget(self.camera_name_edit)
+        layout.addWidget(select_button)
         group.setLayout(layout)
 
         return group
@@ -289,13 +362,11 @@ class MapMatcherWindow(QMainWindow):
 
     def _populate_camera_list(self):
         """base.yaml을 포함하는 하위 폴더에 대해 camera 폴더 스캔"""
-        self.camera_combo.blockSignals(True)
-        self.camera_combo.clear()
+        self.camera_data_list = []
 
         camera_dir = Path("camera")
         if not camera_dir.exists():
             self.status_label.setText("camera 폴더가 없습니다")
-            self.camera_combo.blockSignals(False)
             return
 
         # base.yaml이 있는 폴더 찾기
@@ -308,24 +379,33 @@ class MapMatcherWindow(QMainWindow):
 
         if camera_folders:
             for folder in sorted(camera_folders):
-                self.camera_combo.addItem(folder.name, userData=str(folder))
+                self.camera_data_list.append({
+                    'name': folder.name,
+                    'folder': str(folder)
+                })
             self.status_label.setText(f"{len(camera_folders)}개의 카메라를 찾았습니다")
         else:
             self.status_label.setText("camera 폴더에 base.yaml을 가진 폴더가 없습니다")
 
-        self.camera_combo.blockSignals(False)
-
         # 첫 번째 카메라 자동 선택
-        if camera_folders and self.camera_combo.count() > 0:
-            self.camera_combo.setCurrentIndex(0)
-            self._on_camera_selected(0)
+        if self.camera_data_list:
+            first_camera = self.camera_data_list[0]
+            self.camera_name_edit.setText(first_camera['name'])
+            self._on_camera_selected(first_camera['folder'])
 
-    def _on_camera_selected(self, index):
+    def _open_camera_selection_dialog(self):
+        """카메라 선택 다이얼로그 열기"""
+        # 항상 최신 목록을 가져옴
+        self._populate_camera_list()
+
+        dialog = CameraSelectionDialog(self.camera_data_list, self)
+        if dialog.exec() == QDialog.Accepted:
+            if dialog.selected_camera_folder:
+                self.camera_name_edit.setText(dialog.selected_camera_name)
+                self._on_camera_selected(dialog.selected_camera_folder)
+
+    def _on_camera_selected(self, camera_folder):
         """카메라 폴더 및 base.yaml 로드"""
-        if index < 0:
-            return
-
-        camera_folder = self.camera_combo.currentData()
         if not camera_folder:
             return
 
@@ -857,19 +937,31 @@ class MapMatcherWindow(QMainWindow):
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            print(f"[피팅] JSON 로드: {json_path}")
+            print(f"[피팅] JSON keys: {list(data.keys())}")
         except Exception as e:
             self.status_label.setText(f"라벨링 파일 로드 오류: {e}")
             return
 
-        lanes = data.get('lanes', [])
-        if not lanes:
+        # 두 가지 JSON 구조 지원:
+        # 1. 새 구조: {"lanes": [{"points": [...]}]}
+        # 2. 기존 구조: {"points": [...]}
+        all_points = []
+
+        if 'lanes' in data:
+            # 새 구조
+            lanes = data.get('lanes', [])
+            for lane in lanes:
+                all_points.extend(lane.get('points', []))
+            print(f"[피팅] 새 구조 (lanes): {len(lanes)}개 그룹, 총 {len(all_points)}개 점")
+        elif 'points' in data:
+            # 기존 구조
+            all_points = data.get('points', [])
+            print(f"[피팅] 기존 구조 (points): {len(all_points)}개 점")
+
+        if not all_points:
             self.status_label.setText("라벨링된 차선이 없습니다")
             return
-
-        # 모든 차선의 점을 하나로 합침
-        all_points = []
-        for lane in lanes:
-            all_points.extend(lane.get('points', []))
 
         if len(all_points) < 2:
             self.status_label.setText("라벨링 점이 부족합니다 (최소 2개 필요)")

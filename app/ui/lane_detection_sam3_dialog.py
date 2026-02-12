@@ -275,11 +275,12 @@ class LaneDetectionSAM3Dialog(QDialog):
 
         if lanes:
             self.btn_save.setEnabled(True)
-            self.info_label.setText(f"검출 완료! {len(lanes)}개의 차선을 찾았습니다.")
-            self.result_label.setText(f"검출된 차선: {len(lanes)}개")
+            total_points = sum(len(lane['points']) for lane in lanes)
+            self.info_label.setText("검출 완료! 차선을 찾았습니다.")
+            self.result_label.setText(f"검출된 점: {total_points}개")
         else:
             self.info_label.setText("차선을 찾지 못했습니다. 다른 프롬프트를 시도해보세요.")
-            self.result_label.setText("검출된 차선: 0개")
+            self.result_label.setText("검출된 점: 0개")
 
         self._update_display()
 
@@ -294,38 +295,43 @@ class LaneDetectionSAM3Dialog(QDialog):
         if self.original_image is None:
             return
 
-        # 1. 오른쪽 이미지 (기존 라인 드로잉)
+        # 1. 오른쪽 이미지 (점만 표시)
         display_img_right = self.original_image.copy()
-        
+        point_color = (0, 255, 0)  # 녹색 (수동 라벨링과 동일)
+
         for lane in self.detected_lanes:
-            lane_id = lane['id']
             points = lane['points']
-            color = self.LANE_COLORS[lane_id % len(self.LANE_COLORS)]
 
-            # 점 그리기
+            # 점만 그리기 (연결 없음)
             for px, py in points:
-                cv2.circle(display_img_right, (px, py), 4, color, -1)
+                cv2.circle(display_img_right, (px, py), 5, point_color, -1)
+                cv2.circle(display_img_right, (px, py), 5, (0, 0, 0), 1)  # 테두리
 
-            # 선 그리기 (점이 2개 이상이면 연결)
-            if len(points) >= 2:
-                pts = np.array(points, dtype=np.int32)
-                cv2.polylines(display_img_right, [pts], False, color, 2)
-
-        # 2. 왼쪽 이미지 (마스크 오버레이)
+        # 2. 왼쪽 이미지 (SAM3 원본 마스크 전체 표시)
         display_img_left = self.original_image.copy()
         overlay = display_img_left.copy()
-        
+
         for lane in self.detected_lanes:
-            mask = lane['mask']
-            lane_id = lane['id']
-            # 마스크와 라인이 되도록 같은 색상 계열 사용 (디버깅 용이)
-            color = self.LANE_COLORS[lane_id % len(self.LANE_COLORS)]
-            
-            # 마스크가 있는 영역에 색상 입히기
-            overlay[mask > 0] = color
+            # SAM3 원본 마스크 (필터링 전) 사용
+            raw_masks = lane.get('raw_masks', [])
+
+            if raw_masks:
+                for i, mask in enumerate(raw_masks):
+                    color = self.LANE_COLORS[i % len(self.LANE_COLORS)]
+                    # 마스크가 있는 영역에 색상 입히기
+                    overlay[mask > 0] = color
+                    # 윤곽선 추가 (더 잘 보이게)
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    cv2.drawContours(display_img_left, contours, -1, color, 2)
+            else:
+                # raw_masks가 없으면 combined_mask 사용 (fallback)
+                mask = lane.get('mask')
+                if mask is not None:
+                    color = self.LANE_COLORS[0]
+                    overlay[mask > 0] = color
 
         # 반투명 합성 (Alpha Blending)
-        alpha = 0.5
+        alpha = 0.6
         cv2.addWeighted(overlay, alpha, display_img_left, 1 - alpha, 0, display_img_left)
 
         # Qt 이미지로 변환 및 표시
@@ -406,9 +412,10 @@ class LaneDetectionSAM3Dialog(QDialog):
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
+            total_points = sum(len(lane['points']) for lane in lanes_to_save)
             QMessageBox.information(
                 self, "저장 완료",
-                f"저장됨: {json_path}\n\n{len(lanes_to_save)}개의 차선이 저장되었습니다."
+                f"저장됨: {json_path}\n\n{total_points}개의 점이 저장되었습니다."
             )
         except Exception as e:
             QMessageBox.critical(self, "저장 오류", f"저장 실패: {e}")

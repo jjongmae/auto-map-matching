@@ -1,5 +1,7 @@
 """
-차선 정답지 생성을 위한 어노테이션 다이얼로그
+차선 정답지 생성을 위한 어노테이션 다이얼로그 (단순화 버전)
+
+그룹/연결 없이 순수하게 점만 찍는 방식입니다.
 """
 import json
 from pathlib import Path
@@ -80,32 +82,20 @@ class ZoomableImageWidget(QWidget):
 
 
 class LaneLabelingDialog(QDialog):
-    # 차선별 색상 (최대 10개)
-    LANE_COLORS = [
-        (255, 0, 0),      # 빨강
-        (0, 255, 0),      # 초록
-        (0, 0, 255),      # 파랑
-        (255, 255, 0),    # 노랑
-        (255, 0, 255),    # 마젠타
-        (0, 255, 255),    # 시안
-        (255, 128, 0),    # 주황
-        (128, 0, 255),    # 보라
-        (0, 255, 128),    # 민트
-        (255, 128, 128),  # 연분홍
-    ]
+    # 점 색상 (녹색)
+    POINT_COLOR = (0, 255, 0)
 
     def __init__(self, image_path, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("차선 라벨링")
+        self.setWindowTitle("차선 라벨링 (점 찍기)")
         self.resize(1400, 900)
 
         self.image_path = image_path
         self.original_image = None
         self.original_size = None
 
-        # 차선 데이터: [{"id": 0, "points": [[x, y], ...]}, ...]
-        self.lanes = []
-        self.current_lane_id = 0
+        # 점 목록: [[x, y], ...]
+        self.points = []
 
         self._setup_ui()
         self._load_image()
@@ -135,8 +125,7 @@ class LaneLabelingDialog(QDialog):
 
         # 단축키 안내
         shortcut_label = QLabel(
-            "[클릭] 점 추가 | [Enter] 다음 차선 | [Backspace] 점 삭제 | "
-            "[Delete] 차선 삭제 | [S] 저장 | [R] 초기화"
+            "[클릭] 점 추가 | [Backspace] 마지막 점 삭제 | [S] 저장 | [R] 초기화"
         )
         shortcut_label.setStyleSheet(
             "font-size: 12px; padding: 8px; background-color: #e0e0e0; border-radius: 3px;"
@@ -146,16 +135,6 @@ class LaneLabelingDialog(QDialog):
 
         # 하단 버튼
         button_layout = QHBoxLayout()
-
-        btn_prev_lane = QPushButton("◀ 이전 차선")
-        btn_prev_lane.clicked.connect(self._prev_lane)
-        button_layout.addWidget(btn_prev_lane)
-
-        btn_next_lane = QPushButton("다음 차선 ▶")
-        btn_next_lane.clicked.connect(self._next_lane)
-        button_layout.addWidget(btn_next_lane)
-
-        button_layout.addStretch()
 
         # 줌 버튼
         btn_zoom_out = QPushButton("축소 (-)")
@@ -219,39 +198,33 @@ class LaneLabelingDialog(QDialog):
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                self.lanes = data.get('lanes', [])
 
-                if self.lanes:
-                    self.current_lane_id = max(lane['id'] for lane in self.lanes)
+                # 새 형식 (points) 먼저 시도
+                if 'points' in data:
+                    self.points = data['points']
+                # 구 형식 (lanes) 호환
+                elif 'lanes' in data:
+                    self.points = []
+                    for lane in data['lanes']:
+                        self.points.extend(lane.get('points', []))
+
             except Exception as e:
                 print(f"정답지 로드 오류: {e}")
-                self.lanes = []
+                self.points = []
 
     def _save_annotation(self):
         """정답지 저장"""
         json_path = self._get_annotation_path()
         json_path.parent.mkdir(parents=True, exist_ok=True)
 
-        lanes_to_save = [lane for lane in self.lanes if lane['points']]
-
-        # ID 재할당 (입력 순서대로 0, 1, 2...)
-        for i, lane in enumerate(lanes_to_save):
-            lane['id'] = i
-
         data = {
             'image': Path(self.image_path).name,
-            'lanes': lanes_to_save
+            'points': self.points
         }
 
         try:
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-
-            self.lanes = lanes_to_save
-            if lanes_to_save:
-                self.current_lane_id = lanes_to_save[-1]['id']
-            else:
-                self.current_lane_id = 0
 
             self._update_display()
             QMessageBox.information(self, "저장 완료", f"저장됨: {json_path}")
@@ -262,55 +235,25 @@ class LaneLabelingDialog(QDialog):
         """모든 어노테이션 초기화"""
         reply = QMessageBox.question(
             self, "초기화 확인",
-            "모든 차선 데이터를 삭제하시겠습니까?",
+            "모든 점을 삭제하시겠습니까?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
-            self.lanes = []
-            self.current_lane_id = 0
+            self.points = []
             self._update_display()
-
-    def _get_current_lane(self):
-        """현재 차선 데이터 반환 (없으면 생성)"""
-        for lane in self.lanes:
-            if lane['id'] == self.current_lane_id:
-                return lane
-
-        new_lane = {'id': self.current_lane_id, 'points': []}
-        self.lanes.append(new_lane)
-        return new_lane
 
     def _on_image_clicked(self, x, y):
         """이미지 클릭 시 점 추가"""
-        lane = self._get_current_lane()
-        lane['points'].append([x, y])
+        self.points.append([x, y])
         self._update_display()
-
-    def _next_lane(self):
-        """다음 차선으로 이동"""
-        self.current_lane_id += 1
-        self._update_display()
-
-    def _prev_lane(self):
-        """이전 차선으로 이동"""
-        if self.current_lane_id > 0:
-            self.current_lane_id -= 1
-            self._update_display()
 
     def _delete_last_point(self):
-        """현재 차선의 마지막 점 삭제"""
-        for lane in self.lanes:
-            if lane['id'] == self.current_lane_id and lane['points']:
-                lane['points'].pop()
-                self._update_display()
-                return
-
-    def _delete_current_lane(self):
-        """현재 차선 삭제"""
-        self.lanes = [lane for lane in self.lanes if lane['id'] != self.current_lane_id]
-        self._update_display()
+        """마지막 점 삭제"""
+        if self.points:
+            self.points.pop()
+            self._update_display()
 
     def _adjust_zoom(self, delta):
         """줌 레벨 조정"""
@@ -344,21 +287,11 @@ class LaneLabelingDialog(QDialog):
 
         display_img = self.original_image.copy()
 
-        # 모든 차선 그리기
-        for lane in self.lanes:
-            lane_id = lane['id']
-            points = lane['points']
-            color = self.LANE_COLORS[lane_id % len(self.LANE_COLORS)]
-
-            thickness = 2 if lane_id == self.current_lane_id else 1
-            point_radius = 4 if lane_id == self.current_lane_id else 3
-
-            for px, py in points:
-                cv2.circle(display_img, (px, py), point_radius, color, -1)
-
-            if len(points) >= 2:
-                pts = np.array(points, dtype=np.int32)
-                cv2.polylines(display_img, [pts], False, color, thickness)
+        # 모든 점 그리기 (연결 없이 점만)
+        for px, py in self.points:
+            cv2.circle(display_img, (px, py), 5, self.POINT_COLOR, -1)
+            # 점 테두리 (가시성 향상)
+            cv2.circle(display_img, (px, py), 5, (0, 0, 0), 1)
 
         # Qt 이미지로 변환
         h, w, ch = display_img.shape
@@ -370,34 +303,14 @@ class LaneLabelingDialog(QDialog):
         self._update_zoom_label()
 
         # 정보 업데이트
-        current_lane = None
-        for lane in self.lanes:
-            if lane['id'] == self.current_lane_id:
-                current_lane = lane
-                break
-
-        current_points = len(current_lane['points']) if current_lane else 0
-        total_lanes = len([l for l in self.lanes if l['points']])
-
-        color = self.LANE_COLORS[self.current_lane_id % len(self.LANE_COLORS)]
-        color_name = f"RGB({color[0]}, {color[1]}, {color[2]})"
-
-        self.info_label.setText(
-            f"현재 차선: {self.current_lane_id} ({color_name}) | "
-            f"점 개수: {current_points} | "
-            f"총 차선 수: {total_lanes}"
-        )
+        self.info_label.setText(f"점 개수: {len(self.points)}")
 
     def keyPressEvent(self, event):
         """키보드 단축키 처리"""
         key = event.key()
 
-        if key == Qt.Key_Return or key == Qt.Key_Enter:
-            self._next_lane()
-        elif key == Qt.Key_Backspace:
+        if key == Qt.Key_Backspace:
             self._delete_last_point()
-        elif key == Qt.Key_Delete:
-            self._delete_current_lane()
         elif key == Qt.Key_S:
             self._save_annotation()
         elif key == Qt.Key_R:
